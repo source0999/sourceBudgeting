@@ -1,15 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { DecisionLogEntry, Goal, Receipt } from '../src/auditor/types.js'
+import type { DecisionLogEntry, Goal, PlannerSettings, Receipt } from '../src/auditor/types.js'
 
 export type DevStoreState = {
   goals: Goal[]
   receipts: Receipt[]
   decisionLog: DecisionLogEntry[]
   recommendationStatus: Record<string, { status: string; snoozedUntil?: string | null }>
-  settings: {
-    debtMinimumBuffer: number
-  }
+  settings: PlannerSettings
 }
 
 const dataDir = path.join(process.cwd(), 'data')
@@ -80,6 +78,8 @@ const defaultState = (): DevStoreState => ({
   recommendationStatus: {},
   settings: {
     debtMinimumBuffer: 0,
+    carPaymentMonthly: 460,
+    phonePaymentMonthly: 40,
   },
 })
 
@@ -95,7 +95,16 @@ export const readDevStore = (): DevStoreState => {
   ensureStore()
 
   try {
-    const stored = { ...defaultState(), ...JSON.parse(fs.readFileSync(statePath, 'utf8')) } as DevStoreState
+    const parsed = JSON.parse(fs.readFileSync(statePath, 'utf8')) as Partial<DevStoreState>
+    const fallback = defaultState()
+    const stored = {
+      ...fallback,
+      ...parsed,
+      settings: {
+        ...fallback.settings,
+        ...parsed.settings,
+      },
+    } as DevStoreState
     const migratedGoals = stored.goals.map((goal) =>
       goal.id === 'school' && goal.deadline === '2026-08-31'
         ? { ...goal, deadline: winterSchoolDeadline }

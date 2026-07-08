@@ -168,6 +168,12 @@ export type IncomeSummary = {
   confidence: number
 }
 
+export type PlannerSettings = {
+  debtMinimumBuffer: number
+  carPaymentMonthly: number
+  phonePaymentMonthly: number
+}
+
 export type SchoolRunway = {
   remainingSchoolAmount: number
   weeksUntilDeadline: number
@@ -183,6 +189,9 @@ export type SafeToSpendResult = {
   availableCash: number
   estimatedMonthlyIncome: number
   monthlySchoolTarget: number
+  monthlyRecurringCommitments: number
+  fixedMonthlyObligations: number
+  allowedMonthlyFlexibleSpend: number
   upcomingRecurringReserve: number
   schoolReserve: number
   debtReserve: number

@@ -852,6 +852,8 @@ app.get('/api/planner/state', (_req, res) => {
 app.post('/api/planner/goals', (req, res) => {
   const incomingGoals = req.body?.goals
   const debtMinimumBuffer = Number(req.body?.settings?.debtMinimumBuffer ?? 0)
+  const carPaymentMonthly = Number(req.body?.settings?.carPaymentMonthly ?? 0)
+  const phonePaymentMonthly = Number(req.body?.settings?.phonePaymentMonthly ?? 0)
 
   if (!Array.isArray(incomingGoals)) {
     res.status(400).json({ error: 'goals array is required.' })
@@ -864,6 +866,8 @@ app.post('/api/planner/goals', (req, res) => {
     settings: {
       ...current.settings,
       debtMinimumBuffer: Number.isFinite(debtMinimumBuffer) ? Math.max(0, debtMinimumBuffer) : 0,
+      carPaymentMonthly: Number.isFinite(carPaymentMonthly) ? Math.max(0, carPaymentMonthly) : 0,
+      phonePaymentMonthly: Number.isFinite(phonePaymentMonthly) ? Math.max(0, phonePaymentMonthly) : 0,
     },
     decisionLog: [
       ...current.decisionLog,
@@ -898,6 +902,7 @@ app.get('/api/recommendations', async (req, res) => {
       transactions,
       recurringCharges: recurring,
       debtReserve: store.settings.debtMinimumBuffer,
+      settings: store.settings,
       currentDate: new Date(),
     })
 

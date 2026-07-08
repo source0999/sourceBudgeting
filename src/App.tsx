@@ -122,6 +122,8 @@ type PlannerStateResponse = {
   goals: Goal[]
   settings: {
     debtMinimumBuffer: number
+    carPaymentMonthly: number
+    phonePaymentMonthly: number
   }
 }
 
@@ -262,6 +264,8 @@ function App() {
   const [publicConfig, setPublicConfig] = useState<PublicConfigResponse | null>(null)
   const [goals, setGoals] = useState<Goal[]>([])
   const [debtMinimumBuffer, setDebtMinimumBuffer] = useState(0)
+  const [carPaymentMonthly, setCarPaymentMonthly] = useState(460)
+  const [phonePaymentMonthly, setPhonePaymentMonthly] = useState(40)
   const [schoolRunway, setSchoolRunway] = useState<SchoolRunway | null>(null)
   const [safeToSpend, setSafeToSpend] = useState<SafeToSpendResult | null>(null)
   const [incomeSummary, setIncomeSummary] = useState<IncomeSummary | null>(null)
@@ -323,6 +327,8 @@ function App() {
     const planner = await apiRequest<PlannerStateResponse>('/api/planner/state')
     setGoals(planner.goals)
     setDebtMinimumBuffer(planner.settings.debtMinimumBuffer)
+    setCarPaymentMonthly(planner.settings.carPaymentMonthly)
+    setPhonePaymentMonthly(planner.settings.phonePaymentMonthly)
   }, [])
 
   const loadRecommendations = useCallback(async () => {
@@ -349,11 +355,13 @@ function App() {
       method: 'POST',
       body: JSON.stringify({
         goals,
-        settings: { debtMinimumBuffer },
+        settings: { debtMinimumBuffer, carPaymentMonthly, phonePaymentMonthly },
       }),
     })
     setGoals(data.goals)
     setDebtMinimumBuffer(data.settings.debtMinimumBuffer)
+    setCarPaymentMonthly(data.settings.carPaymentMonthly)
+    setPhonePaymentMonthly(data.settings.phonePaymentMonthly)
     await loadRecommendations()
   }
 
@@ -1034,6 +1042,14 @@ function App() {
             <strong>{currency.format(schoolRunway?.monthlySchoolTarget ?? 0)}</strong>
             <span>Estimated job income</span>
             <strong>{currency.format(incomeSummary?.estimatedMonthlyIncome ?? 0)}</strong>
+            <span>Current subs/bills monthly</span>
+            <strong>{currency.format(safeToSpend?.monthlyRecurringCommitments ?? 0)}</strong>
+            <span>Car + phone monthly</span>
+            <strong>{currency.format(safeToSpend?.fixedMonthlyObligations ?? carPaymentMonthly + phonePaymentMonthly)}</strong>
+            <span>Allowed flexible monthly spend</span>
+            <strong className={(safeToSpend?.allowedMonthlyFlexibleSpend ?? 0) < 0 ? 'danger-text' : ''}>
+              {currency.format(safeToSpend?.allowedMonthlyFlexibleSpend ?? 0)}
+            </strong>
             <span>Safe to spend estimate</span>
             <strong className={(safeToSpend?.safeToSpend ?? 0) < 0 ? 'danger-text' : ''}>
               {currency.format(safeToSpend?.safeToSpend ?? 0)}
@@ -1055,6 +1071,26 @@ function App() {
                 step="25"
                 value={debtMinimumBuffer}
                 onChange={(event) => setDebtMinimumBuffer(Number(event.currentTarget.value))}
+              />
+            </label>
+            <label>
+              Car payment monthly
+              <input
+                type="number"
+                min="0"
+                step="10"
+                value={carPaymentMonthly}
+                onChange={(event) => setCarPaymentMonthly(Number(event.currentTarget.value))}
+              />
+            </label>
+            <label>
+              Phone payment monthly
+              <input
+                type="number"
+                min="0"
+                step="5"
+                value={phonePaymentMonthly}
+                onChange={(event) => setPhonePaymentMonthly(Number(event.currentTarget.value))}
               />
             </label>
             {coloradoGoal ? (

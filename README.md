@@ -145,6 +145,9 @@ The planner can calculate:
 - Estimated monthly job income from matched Atlanta Autism Center payroll transactions
 - Remaining school amount
 - Weekly and monthly school target
+- Current detected recurring subscription/bill commitments
+- Editable car payment and phone payment defaults
+- Allowed monthly flexible spending after income, school target, recurring commitments, car/phone, and debt buffer
 - Upcoming recurring reserve
 - Debt-current buffer
 - Safe-to-spend estimate
@@ -156,6 +159,13 @@ Income detection notes:
 - The local rules look for posted negative transactions whose names resemble `Atlanta Autism Center`.
 - Estimated monthly income is based on detected paycheck cadence when there are multiple matched paychecks.
 - This is local heuristic math, not payroll verification.
+
+Fixed payment defaults:
+
+- Car payment: `$460/month`
+- Phone payment: `$40/month`
+
+These are editable in the planner and stored only in local dev state under `data/`.
 
 These recommendations are rules/math only. They do not move money, cancel subscriptions, mutate Plaid, or provide certified financial advice.
 

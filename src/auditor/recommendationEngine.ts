@@ -7,6 +7,7 @@ import type {
   BasicTransactionForAudit,
   Goal,
   IncomeSummary,
+  PlannerSettings,
   Recommendation,
   RecurringChargeForAudit,
   SafeToSpendResult,
@@ -41,6 +42,7 @@ export function buildRecommendations(input: {
   transactions: BasicTransactionForAudit[]
   recurringCharges: RecurringChargeForAudit[]
   debtReserve: number
+  settings?: PlannerSettings
   incomeSummary?: IncomeSummary
   currentDate?: Date
 }): {
@@ -57,6 +59,7 @@ export function buildRecommendations(input: {
     recurringCharges: input.recurringCharges,
     schoolRunway,
     incomeSummary,
+    settings: input.settings,
     debtReserve: input.debtReserve,
     currentDate: input.currentDate,
   })
@@ -155,6 +158,9 @@ export function buildRecommendations(input: {
         `Available cash: $${safeToSpend.availableCash.toFixed(2)}.`,
         `Estimated monthly job income: $${safeToSpend.estimatedMonthlyIncome.toFixed(2)}.`,
         `Monthly school target: $${safeToSpend.monthlySchoolTarget.toFixed(2)}.`,
+        `Monthly recurring commitments: $${safeToSpend.monthlyRecurringCommitments.toFixed(2)}.`,
+        `Car/phone fixed obligations: $${safeToSpend.fixedMonthlyObligations.toFixed(2)}.`,
+        `Allowed flexible spending this month: $${safeToSpend.allowedMonthlyFlexibleSpend.toFixed(2)}.`,
         `Upcoming recurring reserve: $${safeToSpend.upcomingRecurringReserve.toFixed(2)}.`,
         `School reserve this week: $${safeToSpend.schoolReserve.toFixed(2)}.`,
       ],

@@ -63,11 +63,29 @@ describe('auditor math', () => {
       ],
       recurringCharges: [],
       schoolRunway: calculateSchoolRunway(schoolGoal, new Date('2026-08-03T00:00:00')),
+      incomeSummary: {
+        employerName: 'Atlanta Autism Center',
+        matchedIncomeTotal: 2400,
+        paycheckCount: 3,
+        averagePaycheck: 800,
+        estimatedMonthlyIncome: 1800,
+        estimatedPayCadence: 'biweekly',
+        firstPayDate: '2026-06-01',
+        lastPayDate: '2026-07-01',
+        confidence: 90,
+      },
+      settings: {
+        debtMinimumBuffer: 100,
+        carPaymentMonthly: 460,
+        phonePaymentMonthly: 40,
+      },
       debtReserve: 100,
       currentDate: new Date('2026-08-03T00:00:00'),
     })
 
     expect(result.safeToSpend).toBeGreaterThan(0)
+    expect(result.fixedMonthlyObligations).toBe(500)
+    expect(result.allowedMonthlyFlexibleSpend).toBeLessThan(900)
   })
 
   it('calculates negative safe-to-spend', () => {
