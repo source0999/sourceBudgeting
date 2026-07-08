@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { calculateSafeToSpend } from './cashflow.js'
 import { findInterestCharges, findPaycheckAdvanceTransactions } from './debtSignals.js'
 import { calculateSchoolRunway } from './goalMath.js'
+import { detectJobIncome } from './incomeSignals.js'
 import { buildRecommendations } from './recommendationEngine.js'
 import { buildReceiptMatchCandidates } from './receiptMatching.js'
 import type { BasicTransactionForAudit, Goal, Receipt } from './types.js'
@@ -90,6 +91,19 @@ describe('auditor math', () => {
 
     expect(result.safeToSpend).toBeLessThan(0)
   })
+
+  it('detects Atlanta Autism Center income and estimates monthly pay', () => {
+    const income = detectJobIncome([
+      tx({ transaction_id: 'pay-1', date: '2026-06-05', name: '153218 ATLANTA A PAYROLL 260605 BRITTON SMITH', amount: -800 }),
+      tx({ transaction_id: 'pay-2', date: '2026-06-19', name: '153218 ATLANTA A PAYROLL 260619 BRITTON SMITH', amount: -800 }),
+      tx({ transaction_id: 'pay-3', date: '2026-07-03', name: '153218 ATLANTA A PAYROLL 260703 BRITTON SMITH', amount: -820 }),
+      tx({ transaction_id: 'spend', date: '2026-07-04', name: 'Walmart', amount: 40 }),
+    ])
+
+    expect(income.paycheckCount).toBe(3)
+    expect(income.estimatedPayCadence).toBe('biweekly')
+    expect(income.estimatedMonthlyIncome).toBeGreaterThan(1700)
+  })
 })
 
 describe('receipt matching', () => {
@@ -141,5 +155,24 @@ describe('signals and recommendations', () => {
 
     const scores = result.recommendations.map((recommendation) => recommendation.priorityScore)
     expect(scores).toEqual([...scores].sort((left, right) => right - left))
+  })
+
+  it('includes income context in recommendations', () => {
+    const winterSchoolGoal: Goal = { ...schoolGoal, deadline: '2026-12-15' }
+    const result = buildRecommendations({
+      goals: [winterSchoolGoal],
+      accounts: [],
+      recurringCharges: [],
+      transactions: [
+        tx({ transaction_id: 'pay-1', date: '2026-06-05', name: 'ATLANTA AUTISM CENTER PAYROLL', amount: -800 }),
+        tx({ transaction_id: 'pay-2', date: '2026-06-19', name: 'ATLANTA AUTISM CENTER PAYROLL', amount: -800 }),
+      ],
+      debtReserve: 0,
+      currentDate: new Date('2026-07-08T00:00:00'),
+    })
+
+    expect(result.incomeSummary.paycheckCount).toBe(2)
+    expect(result.schoolRunway.monthlySchoolTarget).toBeLessThan(500)
+    expect(result.recommendations.some((recommendation) => recommendation.type === 'income_runway')).toBe(true)
   })
 })

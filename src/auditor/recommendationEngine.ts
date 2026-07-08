@@ -1,10 +1,12 @@
 import { calculateSafeToSpend } from './cashflow.js'
 import { calculateSchoolRunway, roundMoney } from './goalMath.js'
 import { findInterestCharges, findPaycheckAdvanceTransactions, sumPositive } from './debtSignals.js'
+import { detectJobIncome } from './incomeSignals.js'
 import type {
   AccountSnapshot,
   BasicTransactionForAudit,
   Goal,
+  IncomeSummary,
   Recommendation,
   RecurringChargeForAudit,
   SafeToSpendResult,
@@ -39,24 +41,64 @@ export function buildRecommendations(input: {
   transactions: BasicTransactionForAudit[]
   recurringCharges: RecurringChargeForAudit[]
   debtReserve: number
+  incomeSummary?: IncomeSummary
   currentDate?: Date
 }): {
   schoolRunway: SchoolRunway
   safeToSpend: SafeToSpendResult
+  incomeSummary: IncomeSummary
   recommendations: Recommendation[]
 } {
   const schoolGoal = input.goals.find((goal) => goal.type === 'school' && goal.isActive)
   const schoolRunway = calculateSchoolRunway(schoolGoal, input.currentDate)
+  const incomeSummary = input.incomeSummary ?? detectJobIncome(input.transactions)
   const safeToSpend = calculateSafeToSpend({
     accounts: input.accounts,
     recurringCharges: input.recurringCharges,
     schoolRunway,
+    incomeSummary,
     debtReserve: input.debtReserve,
     currentDate: input.currentDate,
   })
   const recommendations: Recommendation[] = []
+  const schoolIncomeShare =
+    incomeSummary.estimatedMonthlyIncome > 0
+      ? roundMoney((schoolRunway.monthlySchoolTarget / incomeSummary.estimatedMonthlyIncome) * 100)
+      : 0
+
+  if (incomeSummary.paycheckCount > 0) {
+    recommendations.push(
+      makeRecommendation({
+        id: 'income-runway',
+        type: 'income_runway',
+        title: `${incomeSummary.employerName} income detected`,
+        summary: `Estimated monthly job income is about $${incomeSummary.estimatedMonthlyIncome.toFixed(2)} from ${incomeSummary.paycheckCount} matched paycheck${incomeSummary.paycheckCount === 1 ? '' : 's'}.`,
+        priorityScore: scoreRecommendation({
+          goalImpactScore: 75,
+          urgencyScore: 55,
+          confidenceScore: incomeSummary.confidence,
+          painScore: 5,
+        }),
+        impactMonthly: incomeSummary.estimatedMonthlyIncome,
+        impactOneTime: incomeSummary.matchedIncomeTotal,
+        urgencyScore: 55,
+        confidenceScore: incomeSummary.confidence,
+        painScore: 5,
+        reasons: [
+          `Average paycheck: $${incomeSummary.averagePaycheck.toFixed(2)}.`,
+          `Estimated pay cadence: ${incomeSummary.estimatedPayCadence}.`,
+          schoolIncomeShare > 0
+            ? `School target is about ${schoolIncomeShare}% of estimated monthly job income.`
+            : 'School target will update once paycheck cadence is clearer.',
+        ],
+        suggestedAction: 'Use this as the income baseline before deciding what monthly cuts are realistic.',
+      }),
+    )
+  }
 
   if (schoolGoal?.isActive) {
+    const deadlineLabel = schoolGoal.deadline >= '2026-11-01' ? 'winter semester target' : 'school target'
+
     recommendations.push(
       makeRecommendation({
         id: 'school-first',
@@ -65,20 +107,26 @@ export function buildRecommendations(input: {
         summary:
           schoolRunway.status === 'funded'
             ? 'School goal is funded.'
-            : `School runway: $${schoolRunway.weeklySchoolTarget.toFixed(2)} needed per week to hit $${schoolGoal.targetAmount.toFixed(2)} by ${schoolGoal.deadline}.`,
+            : `School runway: $${schoolRunway.weeklySchoolTarget.toFixed(2)} per week, or $${schoolRunway.monthlySchoolTarget.toFixed(2)} per month, to hit $${schoolGoal.targetAmount.toFixed(2)} by ${schoolGoal.deadline}.`,
         priorityScore: scoreRecommendation({
           goalImpactScore: 100,
-          urgencyScore: 90,
+          urgencyScore: schoolGoal.deadline >= '2026-11-01' ? 72 : 90,
           confidenceScore: 95,
           painScore: 15,
         }),
         impactMonthly: schoolRunway.monthlySchoolTarget,
         impactOneTime: schoolRunway.remainingSchoolAmount,
-        urgencyScore: 90,
+        urgencyScore: schoolGoal.deadline >= '2026-11-01' ? 72 : 90,
         confidenceScore: 95,
         painScore: 15,
-        reasons: ['School unlock is the top priority.', 'Deadline is fixed for late August planning.'],
-        suggestedAction: 'Set aside the weekly school target before funding lower-priority goals.',
+        reasons: [
+          'School unlock is the top priority.',
+          `Deadline is now treated as a ${deadlineLabel}, not a one-month sprint.`,
+          schoolIncomeShare > 0
+            ? `This needs about ${schoolIncomeShare}% of estimated monthly job income.`
+            : 'Income baseline will sharpen once enough paychecks are matched.',
+        ],
+        suggestedAction: 'Set aside the monthly school target before funding lower-priority goals.',
       }),
     )
   }
@@ -105,6 +153,8 @@ export function buildRecommendations(input: {
       painScore: 25,
       reasons: [
         `Available cash: $${safeToSpend.availableCash.toFixed(2)}.`,
+        `Estimated monthly job income: $${safeToSpend.estimatedMonthlyIncome.toFixed(2)}.`,
+        `Monthly school target: $${safeToSpend.monthlySchoolTarget.toFixed(2)}.`,
         `Upcoming recurring reserve: $${safeToSpend.upcomingRecurringReserve.toFixed(2)}.`,
         `School reserve this week: $${safeToSpend.schoolReserve.toFixed(2)}.`,
       ],
@@ -196,6 +246,13 @@ export function buildRecommendations(input: {
   }
 
   const categories = new Map<string, number>()
+  const transactionDates = input.transactions
+    .filter((transaction) => transaction.amount > 0 && !transaction.pending)
+    .map((transaction) => new Date(`${transaction.date}T00:00:00`).getTime())
+  const monthsCovered =
+    transactionDates.length > 1
+      ? Math.max(1, (Math.max(...transactionDates) - Math.min(...transactionDates)) / 86_400_000 / 30.4375)
+      : 1
 
   for (const transaction of input.transactions) {
     if (transaction.amount <= 0 || transaction.pending) continue
@@ -214,14 +271,17 @@ export function buildRecommendations(input: {
   }
 
   for (const [category, amount] of categories) {
-    const suggestedCut = category === 'dining/food out' ? 25 : amount > 150 ? 50 : 25
+    const monthlyAmount = roundMoney(amount / monthsCovered)
+    const incomeBasedCap =
+      incomeSummary.estimatedMonthlyIncome > 0 ? Math.max(15, incomeSummary.estimatedMonthlyIncome * 0.035) : 50
+    const suggestedCut = roundMoney(Math.min(incomeBasedCap, monthlyAmount * 0.25, category === 'dining/food out' ? 35 : 75))
 
     recommendations.push(
       makeRecommendation({
         id: `reduce-${category.replace(/\W+/g, '-')}`,
         type: category === 'AI tools' ? 'downgrade_subscription' : 'reduce_category',
         title: `Trim ${category}`,
-        summary: `Try reducing ${category} by $${suggestedCut} this month and send it toward school.`,
+        summary: `Try reducing ${category} by about $${suggestedCut.toFixed(2)} per month and send it toward school.`,
         priorityScore: scoreRecommendation({
           goalImpactScore: Math.min(85, suggestedCut * 2),
           urgencyScore: 65,
@@ -233,8 +293,11 @@ export function buildRecommendations(input: {
         urgencyScore: 65,
         confidenceScore: 65,
         painScore: category === 'AI tools' ? 45 : 35,
-        reasons: [`Recent ${category} spend detected.`, 'Small cuts can directly support the school target.'],
-        suggestedAction: `Set a $${suggestedCut} reduction target for ${category}.`,
+        reasons: [
+          `Estimated ${category} spend is about $${monthlyAmount.toFixed(2)} per month.`,
+          'Small cuts can directly support the winter school target.',
+        ],
+        suggestedAction: `Set a $${suggestedCut.toFixed(2)} monthly reduction target for ${category}.`,
       }),
     )
   }
@@ -294,6 +357,7 @@ export function buildRecommendations(input: {
   return {
     schoolRunway,
     safeToSpend,
+    incomeSummary,
     recommendations: recommendations.sort((left, right) => right.priorityScore - left.priorityScore),
   }
 }

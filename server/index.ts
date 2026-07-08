@@ -904,6 +904,7 @@ app.get('/api/recommendations', async (req, res) => {
     res.json({
       schoolRunway: result.schoolRunway,
       safeToSpend: result.safeToSpend,
+      incomeSummary: result.incomeSummary,
       recommendations: showHidden ? result.recommendations.map((recommendation) => {
         const saved = store.recommendationStatus[recommendation.id]
         return saved ? { ...recommendation, status: saved.status } : recommendation

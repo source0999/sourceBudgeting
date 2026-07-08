@@ -130,7 +130,7 @@ The frontend shows **Subscriptions & Monthly Bills** with estimated monthly recu
 
 The app now includes a local-only **School First Plan** and recommendation layer. It is designed around the current priority order:
 
-- Return to school by late August.
+- Return to school for the winter semester target window.
 - Keep debt current and avoid interest/fee/paycheck-advance traps.
 - Hold Colorado move/rental planning as a later bucket.
 - Keep SpiritOS and land purchase goals lower priority for now.
@@ -138,16 +138,24 @@ The app now includes a local-only **School First Plan** and recommendation layer
 Default school setup:
 
 - Target amount: `$2,000`
-- Deadline: `2026-08-31`
+- Deadline: `2026-12-15`
 
 The planner can calculate:
 
+- Estimated monthly job income from matched Atlanta Autism Center payroll transactions
 - Remaining school amount
 - Weekly and monthly school target
 - Upcoming recurring reserve
 - Debt-current buffer
 - Safe-to-spend estimate
 - Read-only recommendation cards with Accept, Snooze, Dismiss, and Done review actions
+
+Income detection notes:
+
+- Plaid usually represents money coming in as a negative transaction amount.
+- The local rules look for posted negative transactions whose names resemble `Atlanta Autism Center`.
+- Estimated monthly income is based on detected paycheck cadence when there are multiple matched paychecks.
+- This is local heuristic math, not payroll verification.
 
 These recommendations are rules/math only. They do not move money, cancel subscriptions, mutate Plaid, or provide certified financial advice.
 

@@ -2,6 +2,7 @@ export type GoalType = 'school' | 'debt' | 'colorado_move' | 'spiritos' | 'emerg
 export type EssentialLevel = 'essential' | 'useful' | 'nonessential' | 'tax_candidate' | 'unknown'
 export type RecommendationStatus = 'active' | 'accepted' | 'snoozed' | 'dismissed' | 'done'
 export type RecommendationType =
+  | 'income_runway'
   | 'school_first'
   | 'safe_to_spend'
   | 'cancel_subscription'
@@ -155,6 +156,18 @@ export type RecurringChargeForAudit = {
   estimatedMonthlyAmount: number
 }
 
+export type IncomeSummary = {
+  employerName: string
+  matchedIncomeTotal: number
+  paycheckCount: number
+  averagePaycheck: number
+  estimatedMonthlyIncome: number
+  estimatedPayCadence: 'weekly' | 'biweekly' | 'semimonthly' | 'monthly' | 'irregular' | 'unknown'
+  firstPayDate: string | null
+  lastPayDate: string | null
+  confidence: number
+}
+
 export type SchoolRunway = {
   remainingSchoolAmount: number
   weeksUntilDeadline: number
@@ -168,6 +181,8 @@ export type SchoolRunway = {
 
 export type SafeToSpendResult = {
   availableCash: number
+  estimatedMonthlyIncome: number
+  monthlySchoolTarget: number
   upcomingRecurringReserve: number
   schoolReserve: number
   debtReserve: number

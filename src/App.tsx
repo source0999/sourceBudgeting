@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePlaidLink } from 'react-plaid-link'
-import type { Goal, Receipt, ReceiptMatchCandidate, Recommendation, SafeToSpendResult, SchoolRunway } from './auditor/types'
+import type {
+  Goal,
+  IncomeSummary,
+  Receipt,
+  ReceiptMatchCandidate,
+  Recommendation,
+  SafeToSpendResult,
+  SchoolRunway,
+} from './auditor/types'
 
 type Account = {
   account_id: string
@@ -120,6 +128,7 @@ type PlannerStateResponse = {
 type RecommendationsResponse = {
   schoolRunway: SchoolRunway
   safeToSpend: SafeToSpendResult
+  incomeSummary: IncomeSummary
   recommendations: Recommendation[]
 }
 
@@ -255,6 +264,7 @@ function App() {
   const [debtMinimumBuffer, setDebtMinimumBuffer] = useState(0)
   const [schoolRunway, setSchoolRunway] = useState<SchoolRunway | null>(null)
   const [safeToSpend, setSafeToSpend] = useState<SafeToSpendResult | null>(null)
+  const [incomeSummary, setIncomeSummary] = useState<IncomeSummary | null>(null)
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [showHiddenRecommendations, setShowHiddenRecommendations] = useState(false)
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -325,6 +335,7 @@ function App() {
     )
     setSchoolRunway(data.schoolRunway)
     setSafeToSpend(data.safeToSpend)
+    setIncomeSummary(data.incomeSummary)
     setRecommendations(data.recommendations)
   }, [showHiddenRecommendations, status.connected])
 
@@ -952,6 +963,10 @@ function App() {
             <strong>{currency.format(monthlySpending)}</strong>
           </div>
           <div>
+            <span>Estimated job income</span>
+            <strong>{currency.format(incomeSummary?.estimatedMonthlyIncome ?? 0)}</strong>
+          </div>
+          <div>
             <span>Accounts</span>
             <strong>{accounts.length}</strong>
           </div>
@@ -1015,10 +1030,19 @@ function App() {
             <strong>{currency.format(schoolRunway?.remainingSchoolAmount ?? schoolGoal?.targetAmount ?? 2000)}</strong>
             <span>Weekly target</span>
             <strong>{currency.format(schoolRunway?.weeklySchoolTarget ?? 0)}</strong>
+            <span>Monthly school target</span>
+            <strong>{currency.format(schoolRunway?.monthlySchoolTarget ?? 0)}</strong>
+            <span>Estimated job income</span>
+            <strong>{currency.format(incomeSummary?.estimatedMonthlyIncome ?? 0)}</strong>
             <span>Safe to spend estimate</span>
             <strong className={(safeToSpend?.safeToSpend ?? 0) < 0 ? 'danger-text' : ''}>
               {currency.format(safeToSpend?.safeToSpend ?? 0)}
             </strong>
+            <span>
+              {incomeSummary?.paycheckCount
+                ? `${incomeSummary.employerName}: ${incomeSummary.paycheckCount} checks, ${incomeSummary.estimatedPayCadence}`
+                : 'Job income will appear after matching payroll transactions.'}
+            </span>
           </div>
 
           <div className="goal-editor">

@@ -15,6 +15,7 @@ export type DevStoreState = {
 const dataDir = path.join(process.cwd(), 'data')
 const statePath = path.join(dataDir, 'sourcebudgeting-state.json')
 export const receiptOriginalsDir = path.join(dataDir, 'receipts', 'originals')
+const winterSchoolDeadline = '2026-12-15'
 
 const defaultState = (): DevStoreState => ({
   goals: [
@@ -24,7 +25,7 @@ const defaultState = (): DevStoreState => ({
       type: 'school',
       targetAmount: 2000,
       currentProgress: 0,
-      deadline: '2026-08-31',
+      deadline: winterSchoolDeadline,
       priority: 1,
       autoAllocate: true,
       isActive: true,
@@ -35,7 +36,7 @@ const defaultState = (): DevStoreState => ({
       type: 'debt',
       targetAmount: 0,
       currentProgress: 0,
-      deadline: '2026-08-31',
+      deadline: winterSchoolDeadline,
       priority: 2,
       autoAllocate: false,
       isActive: true,
@@ -94,7 +95,16 @@ export const readDevStore = (): DevStoreState => {
   ensureStore()
 
   try {
-    return { ...defaultState(), ...JSON.parse(fs.readFileSync(statePath, 'utf8')) }
+    const stored = { ...defaultState(), ...JSON.parse(fs.readFileSync(statePath, 'utf8')) } as DevStoreState
+    const migratedGoals = stored.goals.map((goal) =>
+      goal.id === 'school' && goal.deadline === '2026-08-31'
+        ? { ...goal, deadline: winterSchoolDeadline }
+        : goal.id === 'debt-current' && goal.deadline === '2026-08-31'
+          ? { ...goal, deadline: winterSchoolDeadline }
+          : goal,
+    )
+
+    return { ...stored, goals: migratedGoals }
   } catch {
     return defaultState()
   }

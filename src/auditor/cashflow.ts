@@ -1,5 +1,5 @@
 import { roundMoney } from './goalMath.js'
-import type { AccountSnapshot, RecurringChargeForAudit, SafeToSpendResult, SchoolRunway } from './types.js'
+import type { AccountSnapshot, IncomeSummary, RecurringChargeForAudit, SafeToSpendResult, SchoolRunway } from './types.js'
 
 const cadenceDays: Record<RecurringChargeForAudit['estimatedCadence'], number> = {
   weekly: 7,
@@ -49,18 +49,23 @@ export function calculateSafeToSpend(input: {
   accounts: AccountSnapshot[]
   recurringCharges: RecurringChargeForAudit[]
   schoolRunway: SchoolRunway
+  incomeSummary?: IncomeSummary
   debtReserve: number
   currentDate?: Date
 }): SafeToSpendResult {
   const availableCash = calculateAvailableCash(input.accounts)
   const upcomingRecurringReserve = calculateUpcomingRecurringReserve(input.recurringCharges, input.currentDate)
   const schoolReserve = input.schoolRunway.status === 'active' ? input.schoolRunway.weeklySchoolTarget : 0
+  const monthlySchoolTarget = input.schoolRunway.status === 'active' ? input.schoolRunway.monthlySchoolTarget : 0
+  const estimatedMonthlyIncome = input.incomeSummary?.estimatedMonthlyIncome ?? 0
   const debtReserve = Math.max(0, input.debtReserve)
   const safeToSpend = roundMoney(availableCash - upcomingRecurringReserve - schoolReserve - debtReserve)
-  const confidence = upcomingRecurringReserve > 0 ? 70 : 55
+  const confidence = Math.min(95, (upcomingRecurringReserve > 0 ? 70 : 55) + (input.incomeSummary?.confidence ? 10 : 0))
 
   return {
     availableCash,
+    estimatedMonthlyIncome,
+    monthlySchoolTarget,
     upcomingRecurringReserve,
     schoolReserve,
     debtReserve,
