@@ -124,6 +124,11 @@ type PlannerStateResponse = {
     debtMinimumBuffer: number
     carPaymentMonthly: number
     phonePaymentMonthly: number
+    groceryCapMonthly: number
+    carChargingCapMonthly: number
+    petCapMonthly: number
+    healthThcaCapMonthly: number
+    miscCapMonthly: number
   }
 }
 
@@ -161,7 +166,73 @@ const spendingCategoryPresets = [
   'Cloud storage',
   'Fitness',
   'Flower / cash payments',
+  'Pet / dog food',
 ]
+
+function getSpendingCategory(transaction: Transaction, transactionOverrides: Record<string, TransactionOverride>) {
+  const override = transactionOverrides[transaction.transaction_id]
+
+  if (override?.category?.trim()) {
+    return override.category.trim()
+  }
+
+  const text = `${transaction.merchant_name ?? ''} ${transaction.name}`.toLowerCase()
+  const primary = transaction.personal_finance_category?.primary ?? transaction.category?.[0] ?? 'UNCATEGORIZED'
+
+  if (text.includes('tesla') || text.includes('supercharger')) return 'Car charging'
+  if (text.includes('petsmart') || text.includes('petco') || text.includes('chewy') || text.includes('tractor supply')) {
+    return 'Pet / dog food'
+  }
+  if (text.includes('cash app*google') || text.includes('cash app google')) return 'Google / app purchases'
+  if (text.includes('youtube') || text.includes('yt premium') || text.includes('youtube premium')) return 'YouTube / Google'
+  if (text.includes('google one')) return 'Cloud storage'
+  if (text.includes('openai') || text.includes('anthropic') || text.includes('cursor') || text.includes('elevenlabs')) {
+    return 'AI tools'
+  }
+  if (text.includes('omni fight') || text.includes('yoga') || text.includes('fitness')) return 'Fitness'
+  if (
+    text.includes('kroger') ||
+    text.includes('publix') ||
+    text.includes('aldi') ||
+    text.includes('lidl') ||
+    text.includes('ingles') ||
+    text.includes('food depot') ||
+    text.includes('costco') ||
+    text.includes("sam's club") ||
+    text.includes('sams club')
+  ) {
+    return 'Groceries'
+  }
+  if (text.includes('walmart')) return 'Shopping'
+  if (
+    text.includes('bp') ||
+    text.includes('quiktrip') ||
+    text.includes('racetrac') ||
+    text.includes('shell') ||
+    text.includes('chevron') ||
+    text.includes('exxon') ||
+    text.includes('mobil')
+  ) {
+    return 'Convenience / backwoods'
+  }
+  if (text.includes('cash app') || text.includes('zelle') || text.includes('atm withdrawal')) return 'Flower / cash payments'
+  if (primary === 'FOOD_AND_DRINK') return 'Dining / snacks'
+  if (primary === 'TRANSPORTATION') return 'Transportation'
+  if (primary === 'ENTERTAINMENT') return 'Entertainment'
+  if (primary === 'GENERAL_MERCHANDISE') return 'Shopping'
+  if (primary === 'GENERAL_SERVICES') return 'Services'
+  if (primary === 'PERSONAL_CARE') return 'Personal care'
+  if (primary === 'BANK_FEES') return 'Bank fees'
+  if (primary === 'LOAN_PAYMENTS') return 'Loan/paycheck advance'
+  if (primary.startsWith('TRANSFER')) return 'Transfers'
+  if (primary === 'INCOME' || primary === 'LOAN_DISBURSEMENTS') return 'Income/credits'
+
+  return primary
+    .toLowerCase()
+    .split('_')
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+    .join(' ')
+}
 
 type PlaidLinkLauncherProps = {
   token: string
@@ -266,6 +337,11 @@ function App() {
   const [debtMinimumBuffer, setDebtMinimumBuffer] = useState(0)
   const [carPaymentMonthly, setCarPaymentMonthly] = useState(460)
   const [phonePaymentMonthly, setPhonePaymentMonthly] = useState(40)
+  const [groceryCapMonthly, setGroceryCapMonthly] = useState(220)
+  const [carChargingCapMonthly, setCarChargingCapMonthly] = useState(20)
+  const [petCapMonthly, setPetCapMonthly] = useState(50)
+  const [healthThcaCapMonthly, setHealthThcaCapMonthly] = useState(80)
+  const [miscCapMonthly, setMiscCapMonthly] = useState(97)
   const [schoolRunway, setSchoolRunway] = useState<SchoolRunway | null>(null)
   const [safeToSpend, setSafeToSpend] = useState<SafeToSpendResult | null>(null)
   const [incomeSummary, setIncomeSummary] = useState<IncomeSummary | null>(null)
@@ -329,6 +405,11 @@ function App() {
     setDebtMinimumBuffer(planner.settings.debtMinimumBuffer)
     setCarPaymentMonthly(planner.settings.carPaymentMonthly)
     setPhonePaymentMonthly(planner.settings.phonePaymentMonthly)
+    setGroceryCapMonthly(planner.settings.groceryCapMonthly)
+    setCarChargingCapMonthly(planner.settings.carChargingCapMonthly)
+    setPetCapMonthly(planner.settings.petCapMonthly)
+    setHealthThcaCapMonthly(planner.settings.healthThcaCapMonthly)
+    setMiscCapMonthly(planner.settings.miscCapMonthly)
   }, [])
 
   const loadRecommendations = useCallback(async () => {
@@ -355,13 +436,27 @@ function App() {
       method: 'POST',
       body: JSON.stringify({
         goals,
-        settings: { debtMinimumBuffer, carPaymentMonthly, phonePaymentMonthly },
+        settings: {
+          debtMinimumBuffer,
+          carPaymentMonthly,
+          phonePaymentMonthly,
+          groceryCapMonthly,
+          carChargingCapMonthly,
+          petCapMonthly,
+          healthThcaCapMonthly,
+          miscCapMonthly,
+        },
       }),
     })
     setGoals(data.goals)
     setDebtMinimumBuffer(data.settings.debtMinimumBuffer)
     setCarPaymentMonthly(data.settings.carPaymentMonthly)
     setPhonePaymentMonthly(data.settings.phonePaymentMonthly)
+    setGroceryCapMonthly(data.settings.groceryCapMonthly)
+    setCarChargingCapMonthly(data.settings.carChargingCapMonthly)
+    setPetCapMonthly(data.settings.petCapMonthly)
+    setHealthThcaCapMonthly(data.settings.healthThcaCapMonthly)
+    setMiscCapMonthly(data.settings.miscCapMonthly)
     await loadRecommendations()
   }
 
@@ -485,68 +580,6 @@ function App() {
         ? new Date(now.getFullYear(), now.getMonth(), 1)
         : new Date(now.getFullYear(), now.getMonth() - 3, 1)
 
-    const normalizeSpendingCategory = (transaction: Transaction) => {
-      const override = transactionOverrides[transaction.transaction_id]
-
-      if (override?.category?.trim()) {
-        return override.category.trim()
-      }
-
-      const text = `${transaction.merchant_name ?? ''} ${transaction.name}`.toLowerCase()
-      const primary = transaction.personal_finance_category?.primary ?? transaction.category?.[0] ?? 'UNCATEGORIZED'
-
-      if (text.includes('tesla') || text.includes('supercharger')) return 'Car charging'
-      if (text.includes('cash app*google') || text.includes('cash app google')) return 'Google / app purchases'
-      if (text.includes('youtube') || text.includes('yt premium') || text.includes('youtube premium')) return 'YouTube / Google'
-      if (text.includes('google one')) return 'Cloud storage'
-      if (text.includes('openai') || text.includes('anthropic') || text.includes('cursor') || text.includes('elevenlabs')) {
-        return 'AI tools'
-      }
-      if (text.includes('omni fight') || text.includes('yoga') || text.includes('fitness')) return 'Fitness'
-      if (
-        text.includes('kroger') ||
-        text.includes('publix') ||
-        text.includes('aldi') ||
-        text.includes('lidl') ||
-        text.includes('ingles') ||
-        text.includes('food depot') ||
-        text.includes('costco') ||
-        text.includes("sam's club") ||
-        text.includes('sams club')
-      ) {
-        return 'Groceries'
-      }
-      if (text.includes('walmart')) return 'Shopping'
-      if (
-        text.includes('bp') ||
-        text.includes('quiktrip') ||
-        text.includes('racetrac') ||
-        text.includes('shell') ||
-        text.includes('chevron') ||
-        text.includes('exxon') ||
-        text.includes('mobil')
-      ) {
-        return 'Convenience / backwoods'
-      }
-      if (text.includes('cash app') || text.includes('zelle') || text.includes('atm withdrawal')) return 'Flower / cash payments'
-      if (primary === 'FOOD_AND_DRINK') return 'Dining / snacks'
-      if (primary === 'TRANSPORTATION') return 'Transportation'
-      if (primary === 'ENTERTAINMENT') return 'Entertainment'
-      if (primary === 'GENERAL_MERCHANDISE') return 'Shopping'
-      if (primary === 'GENERAL_SERVICES') return 'Services'
-      if (primary === 'PERSONAL_CARE') return 'Personal care'
-      if (primary === 'BANK_FEES') return 'Bank fees'
-      if (primary === 'LOAN_PAYMENTS') return 'Loan/paycheck advance'
-      if (primary.startsWith('TRANSFER')) return 'Transfers'
-      if (primary === 'INCOME' || primary === 'LOAN_DISBURSEMENTS') return 'Income/credits'
-
-      return primary
-        .toLowerCase()
-        .split('_')
-        .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
-        .join(' ')
-    }
-
     const totals = new Map<string, { amount: number; count: number; charges: Transaction[] }>()
     let transactionCount = 0
 
@@ -558,7 +591,7 @@ function App() {
         continue
       }
 
-      const category = normalizeSpendingCategory(transaction)
+      const category = getSpendingCategory(transaction, transactionOverrides)
 
       if (category === 'Income/credits') {
         continue
@@ -606,6 +639,89 @@ function App() {
   }, [spendingBreakdown.categories])
 
   const selectedCategory = spendingBreakdown.categories.find((category) => category.name === selectedSpendingCategory)
+
+  const essentialBudgetRows = useMemo(() => {
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const usedByCategory = new Map<string, number>()
+
+    for (const transaction of transactions) {
+      const transactionDate = new Date(`${transaction.date}T00:00:00`)
+      const override = transactionOverrides[transaction.transaction_id]
+
+      if (transaction.pending || transaction.amount <= 0 || transactionDate < monthStart || transactionDate > now || override?.excluded) {
+        continue
+      }
+
+      const category = getSpendingCategory(transaction, transactionOverrides)
+      usedByCategory.set(category, (usedByCategory.get(category) ?? 0) + transaction.amount)
+    }
+
+    const directCategories = new Set(['Groceries', 'Car charging', 'Pet / dog food', 'Flower / cash payments'])
+    const rows = [
+      {
+        label: 'Groceries / safe foods',
+        category: 'Groceries',
+        cap: groceryCapMonthly,
+        setCap: setGroceryCapMonthly,
+        used: usedByCategory.get('Groceries') ?? 0,
+      },
+      {
+        label: 'Car charging',
+        category: 'Car charging',
+        cap: carChargingCapMonthly,
+        setCap: setCarChargingCapMonthly,
+        used: usedByCategory.get('Car charging') ?? 0,
+      },
+      {
+        label: 'Dog food / pet basics',
+        category: 'Pet / dog food',
+        cap: petCapMonthly,
+        setCap: setPetCapMonthly,
+        used: usedByCategory.get('Pet / dog food') ?? 0,
+      },
+      {
+        label: 'Health / THCA',
+        category: 'Flower / cash payments',
+        cap: healthThcaCapMonthly,
+        setCap: setHealthThcaCapMonthly,
+        used: usedByCategory.get('Flower / cash payments') ?? 0,
+      },
+    ]
+    const flexibleUsed = [...usedByCategory.entries()]
+      .filter(([category]) => !directCategories.has(category) && category !== 'Income/credits')
+      .reduce((sum, [, amount]) => sum + amount, 0)
+
+    rows.push({
+      label: 'Misc / other flexible',
+      category: 'Other',
+      cap: miscCapMonthly,
+      setCap: setMiscCapMonthly,
+      used: Math.max(0, flexibleUsed),
+    })
+
+    const capTotal = rows.reduce((sum, row) => sum + row.cap, 0)
+    const usedTotal = rows.reduce((sum, row) => sum + row.used, 0)
+
+    return {
+      rows: rows.map((row) => ({
+        ...row,
+        used: Math.round(row.used * 100) / 100,
+        remaining: Math.round((row.cap - row.used) * 100) / 100,
+      })),
+      capTotal,
+      usedTotal: Math.round(usedTotal * 100) / 100,
+      remainingTotal: Math.round((capTotal - usedTotal) * 100) / 100,
+    }
+  }, [
+    carChargingCapMonthly,
+    groceryCapMonthly,
+    healthThcaCapMonthly,
+    miscCapMonthly,
+    petCapMonthly,
+    transactionOverrides,
+    transactions,
+  ])
 
   const pieSegments = useMemo(() => {
     let offset = 25
@@ -1115,6 +1231,49 @@ function App() {
             ) : null}
           </div>
         </div>
+
+        <section className="essentials-budget">
+          <div className="panel-heading">
+            <div>
+              <h3>Essentials monthly caps</h3>
+              <p>
+                Current month: {currency.format(essentialBudgetRows.usedTotal)} used of{' '}
+                {currency.format(essentialBudgetRows.capTotal)}.
+              </p>
+            </div>
+            <strong className={essentialBudgetRows.remainingTotal < 0 ? 'danger-text' : ''}>
+              {currency.format(essentialBudgetRows.remainingTotal)} left
+            </strong>
+          </div>
+          <div className="essentials-grid">
+            {essentialBudgetRows.rows.map((row) => (
+              <div className="essential-row" key={row.label}>
+                <div>
+                  <strong>{row.label}</strong>
+                  <span>{row.category}</span>
+                </div>
+                <label>
+                  Cap
+                  <input
+                    type="number"
+                    min="0"
+                    step="5"
+                    value={row.cap}
+                    onChange={(event) => row.setCap(Number(event.currentTarget.value))}
+                  />
+                </label>
+                <div>
+                  <span>Used</span>
+                  <strong>{currency.format(row.used)}</strong>
+                </div>
+                <div>
+                  <span>Left</span>
+                  <strong className={row.remaining < 0 ? 'danger-text' : ''}>{currency.format(row.remaining)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       </section>
 
       {status.connected ? (

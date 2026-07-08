@@ -506,6 +506,54 @@ button.mini.secondary {
   font-size: 1.35rem;
 }
 
+.essentials-budget {
+  border-top: 1px solid #e3e8ef;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.essentials-budget h3 {
+  color: #0e1728;
+  font-size: 1.05rem;
+  margin: 0 0 6px;
+}
+
+.essentials-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.essential-row {
+  align-items: center;
+  background: #f7f9fb;
+  border: 1px solid #e3e8ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1.2fr) 110px 110px 110px;
+  padding: 12px;
+}
+
+.essential-row div,
+.essential-row label {
+  display: grid;
+  gap: 4px;
+}
+
+.essential-row span,
+.essential-row label {
+  color: #667085;
+  font-size: 0.85rem;
+}
+
+.essential-row strong {
+  color: #0e1728;
+}
+
+.essential-row input {
+  width: 100%;
+}
+
 .danger-text {
   color: #b42318 !important;
 }
@@ -819,6 +867,7 @@ button.preset:hover {
   .dashboard-grid,
   .spending-layout,
   .planner-grid,
+  .essential-row,
   .recommendation-card,
   .receipt-fields,
   .recurring-summary,

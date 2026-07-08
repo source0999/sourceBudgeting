@@ -854,6 +854,11 @@ app.post('/api/planner/goals', (req, res) => {
   const debtMinimumBuffer = Number(req.body?.settings?.debtMinimumBuffer ?? 0)
   const carPaymentMonthly = Number(req.body?.settings?.carPaymentMonthly ?? 0)
   const phonePaymentMonthly = Number(req.body?.settings?.phonePaymentMonthly ?? 0)
+  const groceryCapMonthly = Number(req.body?.settings?.groceryCapMonthly ?? 0)
+  const carChargingCapMonthly = Number(req.body?.settings?.carChargingCapMonthly ?? 0)
+  const petCapMonthly = Number(req.body?.settings?.petCapMonthly ?? 0)
+  const healthThcaCapMonthly = Number(req.body?.settings?.healthThcaCapMonthly ?? 0)
+  const miscCapMonthly = Number(req.body?.settings?.miscCapMonthly ?? 0)
 
   if (!Array.isArray(incomingGoals)) {
     res.status(400).json({ error: 'goals array is required.' })
@@ -868,6 +873,11 @@ app.post('/api/planner/goals', (req, res) => {
       debtMinimumBuffer: Number.isFinite(debtMinimumBuffer) ? Math.max(0, debtMinimumBuffer) : 0,
       carPaymentMonthly: Number.isFinite(carPaymentMonthly) ? Math.max(0, carPaymentMonthly) : 0,
       phonePaymentMonthly: Number.isFinite(phonePaymentMonthly) ? Math.max(0, phonePaymentMonthly) : 0,
+      groceryCapMonthly: Number.isFinite(groceryCapMonthly) ? Math.max(0, groceryCapMonthly) : 0,
+      carChargingCapMonthly: Number.isFinite(carChargingCapMonthly) ? Math.max(0, carChargingCapMonthly) : 0,
+      petCapMonthly: Number.isFinite(petCapMonthly) ? Math.max(0, petCapMonthly) : 0,
+      healthThcaCapMonthly: Number.isFinite(healthThcaCapMonthly) ? Math.max(0, healthThcaCapMonthly) : 0,
+      miscCapMonthly: Number.isFinite(miscCapMonthly) ? Math.max(0, miscCapMonthly) : 0,
     },
     decisionLog: [
       ...current.decisionLog,

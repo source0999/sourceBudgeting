@@ -172,6 +172,11 @@ export type PlannerSettings = {
   debtMinimumBuffer: number
   carPaymentMonthly: number
   phonePaymentMonthly: number
+  groceryCapMonthly: number
+  carChargingCapMonthly: number
+  petCapMonthly: number
+  healthThcaCapMonthly: number
+  miscCapMonthly: number
 }
 
 export type SchoolRunway = {

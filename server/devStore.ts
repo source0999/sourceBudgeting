@@ -80,6 +80,11 @@ const defaultState = (): DevStoreState => ({
     debtMinimumBuffer: 0,
     carPaymentMonthly: 460,
     phonePaymentMonthly: 40,
+    groceryCapMonthly: 220,
+    carChargingCapMonthly: 20,
+    petCapMonthly: 50,
+    healthThcaCapMonthly: 80,
+    miscCapMonthly: 97,
   },
 })
 
