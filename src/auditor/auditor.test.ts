@@ -181,7 +181,7 @@ describe('signals and recommendations', () => {
   })
 
   it('includes income context in recommendations', () => {
-    const winterSchoolGoal: Goal = { ...schoolGoal, deadline: '2026-12-15' }
+    const winterSchoolGoal: Goal = { ...schoolGoal, targetAmount: 1630, deadline: '2026-11-29' }
     const result = buildRecommendations({
       goals: [winterSchoolGoal],
       accounts: [],

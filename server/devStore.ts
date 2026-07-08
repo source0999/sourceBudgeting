@@ -13,7 +13,8 @@ export type DevStoreState = {
 const dataDir = path.join(process.cwd(), 'data')
 const statePath = path.join(dataDir, 'sourcebudgeting-state.json')
 export const receiptOriginalsDir = path.join(dataDir, 'receipts', 'originals')
-const winterSchoolDeadline = '2026-12-15'
+const schoolTargetAmount = 1630
+const schoolDeadline = '2026-11-29'
 
 const defaultState = (): DevStoreState => ({
   goals: [
@@ -21,9 +22,9 @@ const defaultState = (): DevStoreState => ({
       id: 'school',
       name: 'School blocker/balance',
       type: 'school',
-      targetAmount: 2000,
+      targetAmount: schoolTargetAmount,
       currentProgress: 0,
-      deadline: winterSchoolDeadline,
+      deadline: schoolDeadline,
       priority: 1,
       autoAllocate: true,
       isActive: true,
@@ -34,7 +35,7 @@ const defaultState = (): DevStoreState => ({
       type: 'debt',
       targetAmount: 0,
       currentProgress: 0,
-      deadline: winterSchoolDeadline,
+      deadline: schoolDeadline,
       priority: 2,
       autoAllocate: false,
       isActive: true,
@@ -110,13 +111,17 @@ export const readDevStore = (): DevStoreState => {
         ...parsed.settings,
       },
     } as DevStoreState
-    const migratedGoals = stored.goals.map((goal) =>
-      goal.id === 'school' && goal.deadline === '2026-08-31'
-        ? { ...goal, deadline: winterSchoolDeadline }
-        : goal.id === 'debt-current' && goal.deadline === '2026-08-31'
-          ? { ...goal, deadline: winterSchoolDeadline }
-          : goal,
-    )
+    const migratedGoals = stored.goals.map((goal) => {
+      if (goal.id === 'school' && goal.targetAmount === 2000 && ['2026-08-31', '2026-12-15'].includes(goal.deadline)) {
+        return { ...goal, targetAmount: schoolTargetAmount, deadline: schoolDeadline }
+      }
+
+      if (goal.id === 'debt-current' && ['2026-08-31', '2026-12-15'].includes(goal.deadline)) {
+        return { ...goal, deadline: schoolDeadline }
+      }
+
+      return goal
+    })
 
     return { ...stored, goals: migratedGoals }
   } catch {

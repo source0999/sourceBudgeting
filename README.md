@@ -137,8 +137,8 @@ The app now includes a local-only **School First Plan** and recommendation layer
 
 Default school setup:
 
-- Target amount: `$2,000`
-- Deadline: `2026-12-15`
+- Target amount: `$1,630`
+- Deadline: `2026-11-29`
 
 The planner can calculate:
 
