@@ -786,6 +786,27 @@ app.get('/api/transactions', async (req, res) => {
   }
 })
 
+app.post('/api/transactions/refresh', async (_req, res) => {
+  if (!accessToken) {
+    res.status(401).json({ error: 'No Plaid connection is active.' })
+    return
+  }
+
+  try {
+    await plaidClient.transactionsRefresh({
+      access_token: accessToken,
+    })
+
+    res.json({
+      requested: true,
+      checkedAt: new Date().toISOString(),
+      message: 'Asked Plaid to refresh transactions. New pending charges may still take a few minutes or longer to appear.',
+    })
+  } catch (error) {
+    sendPlaidError(res, 'Unable to request a Plaid transaction refresh.', error as PlaidFailure)
+  }
+})
+
 app.get('/api/recurring', async (_req, res) => {
   if (!accessToken) {
     res.status(401).json({ error: 'No Plaid connection is active.' })

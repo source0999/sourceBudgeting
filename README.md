@@ -111,6 +111,8 @@ After a successful Plaid login, the local dev backend stores the Plaid access to
 
 If transactions are not available yet, the app shows **No transactions available yet** instead of crashing.
 
+The **Check bank now** button calls Plaid's transaction refresh endpoint and then reloads accounts, transactions, recurring detection, and recommendation math. This asks Plaid to check Wells Fargo again, but it is not a true live card feed. Brand-new charges may still take a few minutes or longer to appear as pending transactions depending on Wells Fargo and Plaid timing.
+
 ## Recurring Payments Detection
 
 The app calls `GET /api/recurring` after a bank is connected. The backend fetches up to 180 days of sanitized Plaid transactions, groups positive outgoing charges by normalized merchant name, and estimates whether repeated charges look weekly, biweekly, monthly, quarterly, or irregular.

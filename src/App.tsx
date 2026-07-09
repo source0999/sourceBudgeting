@@ -118,6 +118,12 @@ type AccountsResponse = {
   accounts: Account[]
 }
 
+type TransactionsRefreshResponse = {
+  requested: boolean
+  checkedAt: string
+  message: string
+}
+
 type PlannerStateResponse = {
   goals: Goal[]
   settings: {
@@ -352,6 +358,8 @@ function App() {
   const [message, setMessage] = useState('Not connected')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [lastBankCheckAt, setLastBankCheckAt] = useState<string | null>(null)
+  const [bankRefreshNotice, setBankRefreshNotice] = useState<string | null>(null)
 
   const loadBankData = useCallback(async () => {
     const [accountData, transactionData, recurringData] = await Promise.allSettled([
@@ -384,16 +392,39 @@ function App() {
     } else {
       setRecurring([])
     }
+
+    setLastBankCheckAt(new Date().toISOString())
   }, [])
 
   const refreshBankData = async () => {
     setIsLoading(true)
     setError(null)
+    setBankRefreshNotice(null)
 
     try {
       await loadBankData()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to refresh bank data.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const checkBankNow = async () => {
+    setIsLoading(true)
+    setError(null)
+    setBankRefreshNotice(null)
+
+    try {
+      const refresh = await apiRequest<TransactionsRefreshResponse>('/api/transactions/refresh', {
+        method: 'POST',
+      })
+      await loadBankData()
+      setBankRefreshNotice(refresh.message)
+      setLastBankCheckAt(refresh.checkedAt)
+      setMessage('Checked Plaid for newer transactions.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to check Plaid for newer transactions.')
     } finally {
       setIsLoading(false)
     }
@@ -1074,11 +1105,20 @@ function App() {
         <div>
           <span className={status.connected ? 'status-dot connected' : 'status-dot'} />
           <strong>Status:</strong> {message}
+          {lastBankCheckAt ? (
+            <span className="status-meta">Last bank check {new Date(lastBankCheckAt).toLocaleTimeString()}</span>
+          ) : null}
         </div>
-        <div>Plaid env: {activePlaidEnv}</div>
+        <div className="status-actions">
+          <button type="button" className="mini" onClick={checkBankNow} disabled={!status.connected || isLoading}>
+            Check bank now
+          </button>
+          <span>Plaid env: {activePlaidEnv}</span>
+        </div>
       </section>
 
       {error ? <div className="error">{error}</div> : null}
+      {bankRefreshNotice ? <div className="notice">{bankRefreshNotice}</div> : null}
 
       {status.connected ? (
         <section className="summary">

@@ -89,6 +89,7 @@ select {
 .summary,
 .panel,
 .mode-banner,
+.notice,
 .error {
   background: #ffffff;
   border: 1px solid #dce1e8;
@@ -127,6 +128,25 @@ select {
   padding: 14px 16px;
 }
 
+.status-row > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.status-meta {
+  color: #667085;
+  font-size: 0.85rem;
+  margin-left: 18px;
+}
+
+.status-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .status-dot {
   background: #9aa3b2;
   border-radius: 50%;
@@ -143,6 +163,14 @@ select {
 .error {
   border-color: #d05a4f;
   color: #a23a31;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+}
+
+.notice {
+  background: #eef6ff;
+  border-color: #9ec5fe;
+  color: #17406d;
   margin-bottom: 16px;
   padding: 14px 16px;
 }
@@ -860,6 +888,10 @@ button.preset:hover {
   .status-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .status-actions {
+    justify-content: flex-start;
   }
 
   .actions,
