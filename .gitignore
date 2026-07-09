@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 data/
+_design/
+*.zip
 *.local
 .local/
 .env

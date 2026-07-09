@@ -7,6 +7,7 @@ import type {
   ReceiptMatchCandidate,
   Recommendation,
   SafeToSpendResult,
+  SchoolFundingMetadata,
   SchoolRunway,
 } from './auditor/types'
 
@@ -126,6 +127,7 @@ type TransactionsRefreshResponse = {
 
 type PlannerStateResponse = {
   goals: Goal[]
+  goalFundingAccounts: Record<string, string | null>
   settings: {
     debtMinimumBuffer: number
     carPaymentMonthly: number
@@ -142,6 +144,7 @@ type RecommendationsResponse = {
   schoolRunway: SchoolRunway
   safeToSpend: SafeToSpendResult
   incomeSummary: IncomeSummary
+  schoolFunding: SchoolFundingMetadata
   recommendations: Recommendation[]
 }
 
@@ -340,6 +343,7 @@ function App() {
   })
   const [publicConfig, setPublicConfig] = useState<PublicConfigResponse | null>(null)
   const [goals, setGoals] = useState<Goal[]>([])
+  const [goalFundingAccounts, setGoalFundingAccounts] = useState<Record<string, string | null>>({})
   const [debtMinimumBuffer, setDebtMinimumBuffer] = useState(0)
   const [carPaymentMonthly, setCarPaymentMonthly] = useState(460)
   const [phonePaymentMonthly, setPhonePaymentMonthly] = useState(40)
@@ -351,6 +355,7 @@ function App() {
   const [schoolRunway, setSchoolRunway] = useState<SchoolRunway | null>(null)
   const [safeToSpend, setSafeToSpend] = useState<SafeToSpendResult | null>(null)
   const [incomeSummary, setIncomeSummary] = useState<IncomeSummary | null>(null)
+  const [schoolFunding, setSchoolFunding] = useState<SchoolFundingMetadata | null>(null)
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [showHiddenRecommendations, setShowHiddenRecommendations] = useState(false)
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -433,6 +438,7 @@ function App() {
   const loadPlannerState = useCallback(async () => {
     const planner = await apiRequest<PlannerStateResponse>('/api/planner/state')
     setGoals(planner.goals)
+    setGoalFundingAccounts(planner.goalFundingAccounts)
     setDebtMinimumBuffer(planner.settings.debtMinimumBuffer)
     setCarPaymentMonthly(planner.settings.carPaymentMonthly)
     setPhonePaymentMonthly(planner.settings.phonePaymentMonthly)
@@ -454,6 +460,7 @@ function App() {
     setSchoolRunway(data.schoolRunway)
     setSafeToSpend(data.safeToSpend)
     setIncomeSummary(data.incomeSummary)
+    setSchoolFunding(data.schoolFunding)
     setRecommendations(data.recommendations)
   }, [showHiddenRecommendations, status.connected])
 
@@ -477,9 +484,11 @@ function App() {
           healthThcaCapMonthly,
           miscCapMonthly,
         },
+        goalFundingAccounts,
       }),
     })
     setGoals(data.goals)
+    setGoalFundingAccounts(data.goalFundingAccounts)
     setDebtMinimumBuffer(data.settings.debtMinimumBuffer)
     setCarPaymentMonthly(data.settings.carPaymentMonthly)
     setPhonePaymentMonthly(data.settings.phonePaymentMonthly)
@@ -994,6 +1003,73 @@ function App() {
   const schoolGoal = goals.find((goal) => goal.id === 'school')
   const coloradoGoal = goals.find((goal) => goal.id === 'colorado-move')
   const spiritOsGoal = goals.find((goal) => goal.id === 'spiritos')
+  const reserveAccountId = goalFundingAccounts.school ?? schoolGoal?.fundingAccountId ?? null
+  const eligibleFundingAccounts = useMemo(
+    () =>
+      accounts
+        .filter((account) => account.type === 'depository' && (account.subtype === 'checking' || account.subtype === 'savings'))
+        .sort((left, right) => {
+          if (left.subtype === 'savings' && right.subtype !== 'savings') return -1
+          if (right.subtype === 'savings' && left.subtype !== 'savings') return 1
+          return left.name.localeCompare(right.name)
+        }),
+    [accounts],
+  )
+  const hasSavingsFundingAccount = eligibleFundingAccounts.some((account) => account.subtype === 'savings')
+  const selectedReserveAccount = reserveAccountId
+    ? eligibleFundingAccounts.find((account) => account.account_id === reserveAccountId) ?? null
+    : null
+  const checkingBalance = accounts
+    .filter((account) => account.type === 'depository' && account.subtype === 'checking')
+    .reduce((total, account) => total + (account.balances.available ?? account.balances.current ?? 0), 0)
+  const creditCardBalance = accounts
+    .filter((account) => account.type === 'credit')
+    .reduce((total, account) => total + (account.balances.current ?? 0), 0)
+  const schoolSavedProgress =
+    schoolFunding?.fundingProgressSource === 'linked_account' && typeof schoolFunding.fundingAccountBalance === 'number'
+      ? schoolFunding.fundingAccountBalance
+      : schoolGoal?.currentProgress ?? 0
+  const schoolProgressPercent = schoolGoal?.targetAmount
+    ? Math.min(100, Math.round((schoolSavedProgress / schoolGoal.targetAmount) * 100))
+    : 0
+  const decisionStatus =
+    (safeToSpend?.safeToSpend ?? 0) > 50 ? 'safe' : (safeToSpend?.safeToSpend ?? 0) > 0 ? 'tight' : 'urgent'
+  const acceptedRecommendationImpact = recommendations
+    .filter((recommendation) => recommendation.status === 'accepted' || recommendation.status === 'done')
+    .reduce((total, recommendation) => total + recommendation.impactMonthly, 0)
+  const monthsUntilSchoolDeadline = schoolGoal
+    ? Math.max(
+        0,
+        (new Date(`${schoolGoal.deadline}T23:59:59`).getTime() - Date.now()) / 86_400_000 / 30.4375,
+      )
+    : 0
+  const currentForecastSaved = Math.min(
+    schoolGoal?.targetAmount ?? 0,
+    schoolSavedProgress + Math.max(0, safeToSpend?.allowedMonthlyFlexibleSpend ?? 0) * monthsUntilSchoolDeadline,
+  )
+  const acceptedCutsForecastSaved = Math.min(
+    schoolGoal?.targetAmount ?? 0,
+    currentForecastSaved + acceptedRecommendationImpact * monthsUntilSchoolDeadline,
+  )
+  const extraIncomeForecastSaved = Math.min(
+    schoolGoal?.targetAmount ?? 0,
+    acceptedCutsForecastSaved + 150 * 4.345 * monthsUntilSchoolDeadline,
+  )
+  const setSchoolFundingAccount = (accountId: string) => {
+    const normalizedAccountId = accountId || null
+    setGoalFundingAccounts((current) => ({ ...current, school: normalizedAccountId }))
+    setGoals((current) =>
+      current.map((goal) =>
+        goal.id === 'school'
+          ? {
+              ...goal,
+              fundingAccountId: normalizedAccountId,
+              fundingMode: normalizedAccountId ? 'linked_account' : 'manual',
+            }
+          : goal,
+      ),
+    )
+  }
 
   const handlePlannerSave = async () => {
     setError(null)
@@ -1076,17 +1152,53 @@ function App() {
         />
       ) : null}
 
-      <section className="hero">
-        <div>
-          <h1>sourceBudgeting</h1>
-          <p>Private budgeting dashboard</p>
+      <section className="command-strip">
+        <div className="brand-lockup">
+          <div className="brand-mark" />
+          <div>
+            <h1>sourceBudgeting</h1>
+            <p>Private money triage board</p>
+          </div>
         </div>
-        <div className="actions" aria-label="Plaid connection controls">
+        <div className="command-metrics" aria-label="Live money status">
+          <div>
+            <span>Local</span>
+            <strong>private dev</strong>
+          </div>
+          <div>
+            <span>Plaid</span>
+            <strong>{activePlaidEnv}</strong>
+          </div>
+          <div>
+            <span>Status</span>
+            <strong>{message}</strong>
+          </div>
+          <div>
+            <span>Checking</span>
+            <strong>{currency.format(checkingBalance)}</strong>
+          </div>
+          <div>
+            <span>Credit cards</span>
+            <strong>{currency.format(creditCardBalance)}</strong>
+          </div>
+          <div>
+            <span>Month spend</span>
+            <strong>{currency.format(monthlySpending)}</strong>
+          </div>
+          <div>
+            <span>Last bank check</span>
+            <strong>{lastBankCheckAt ? new Date(lastBankCheckAt).toLocaleTimeString() : 'not checked'}</strong>
+          </div>
+        </div>
+        <div className="command-actions">
           <button type="button" onClick={handleConnect} disabled={isLoading}>
             Connect bank
           </button>
+          <button type="button" onClick={checkBankNow} disabled={!status.connected || isLoading}>
+            Check bank now
+          </button>
           <button type="button" className="secondary" onClick={handleReset} disabled={isLoading}>
-            Reset connection / Logout
+            Reset / logout
           </button>
         </div>
       </section>
@@ -1101,50 +1213,52 @@ function App() {
         ) : null}
       </section>
 
-      <section className="status-row" aria-live="polite">
-        <div>
-          <span className={status.connected ? 'status-dot connected' : 'status-dot'} />
-          <strong>Status:</strong> {message}
-          {lastBankCheckAt ? (
-            <span className="status-meta">Last bank check {new Date(lastBankCheckAt).toLocaleTimeString()}</span>
-          ) : null}
-        </div>
-        <div className="status-actions">
-          <button type="button" className="mini" onClick={checkBankNow} disabled={!status.connected || isLoading}>
-            Check bank now
-          </button>
-          <span>Plaid env: {activePlaidEnv}</span>
-        </div>
-      </section>
-
       {error ? <div className="error">{error}</div> : null}
       {bankRefreshNotice ? <div className="notice">{bankRefreshNotice}</div> : null}
 
-      {status.connected ? (
-        <section className="summary">
+      <section className={`decision-card ${decisionStatus}`}>
+        <div>
+          <span className="section-kicker">01 / Primary money decision</span>
+          <h2>Safe to spend today</h2>
+          <strong className="decision-amount">{currency.format(safeToSpend?.safeToSpend ?? 0)}</strong>
+          <p>
+            {status.connected
+              ? (safeToSpend?.safeToSpend ?? 0) >= 0
+                ? `You can spend ${currency.format(safeToSpend?.safeToSpend ?? 0)} today and stay on the school path.`
+                : `Do not spend freely today. School reserve is short by ${currency.format(Math.abs(safeToSpend?.safeToSpend ?? 0))}.`
+              : 'Connect bank to load live money data.'}
+          </p>
+          <span className={`decision-pill ${decisionStatus}`}>{decisionStatus}</span>
+        </div>
+        <div className="decision-equation" aria-label="Safe to spend equation">
           <div>
-            <span>Monthly spending</span>
-            <strong>{currency.format(monthlySpending)}</strong>
+            <span>Checking balance</span>
+            <strong>{currency.format(safeToSpend?.availableCash ?? checkingBalance)}</strong>
           </div>
           <div>
-            <span>Estimated job income</span>
-            <strong>{currency.format(incomeSummary?.estimatedMonthlyIncome ?? 0)}</strong>
+            <span>Minus upcoming recurring</span>
+            <strong>-{currency.format(safeToSpend?.upcomingRecurringReserve ?? 0)}</strong>
           </div>
           <div>
-            <span>Accounts</span>
-            <strong>{accounts.length}</strong>
+            <span>Minus school reserve</span>
+            <strong>-{currency.format(safeToSpend?.schoolReserve ?? 0)}</strong>
           </div>
           <div>
-            <span>Recent transactions</span>
-            <strong>{transactions.length}</strong>
+            <span>Minus debt buffer</span>
+            <strong>-{currency.format(safeToSpend?.debtReserve ?? debtMinimumBuffer)}</strong>
           </div>
-        </section>
-      ) : null}
+          <div className="equation-total">
+            <span>Safe to spend</span>
+            <strong>{currency.format(safeToSpend?.safeToSpend ?? 0)}</strong>
+          </div>
+        </div>
+      </section>
 
       <section className="panel planner-panel">
         <div className="panel-heading">
           <div>
-            <h2>School First Plan</h2>
+            <span className="section-kicker">02 / School comes first</span>
+            <h2>School Return Reserve</h2>
             <p>Read-only local guidance. It never moves money or changes Plaid data.</p>
           </div>
           <button type="button" className="mini" onClick={handlePlannerSave}>
@@ -1173,6 +1287,7 @@ function App() {
                   min="0"
                   step="25"
                   value={schoolGoal.currentProgress}
+                  disabled={schoolFunding?.fundingProgressSource === 'linked_account'}
                   onChange={(event) =>
                     updateGoal(schoolGoal.id, { currentProgress: Number(event.currentTarget.value) })
                   }
@@ -1186,16 +1301,57 @@ function App() {
                   onChange={(event) => updateGoal(schoolGoal.id, { deadline: event.currentTarget.value })}
                 />
               </label>
+              <label>
+                Funding account
+                <select value={reserveAccountId ?? ''} onChange={(event) => setSchoolFundingAccount(event.currentTarget.value)}>
+                  <option value="">Manual saved progress</option>
+                  {eligibleFundingAccounts.map((account) => (
+                    <option key={account.account_id} value={account.account_id}>
+                      {account.name}
+                      {account.mask ? ` ending ${account.mask}` : ''} ({account.subtype})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!hasSavingsFundingAccount ? (
+                <p className="funding-note">
+                  Create/connect a savings account to auto-track the school reserve. Until then, manual saved progress is used.
+                </p>
+              ) : null}
             </div>
           ) : null}
 
           <div className="runway-card">
+            <span>Target</span>
+            <strong>{currency.format(schoolGoal?.targetAmount ?? 0)}</strong>
+            <span>Saved so far</span>
+            <strong>{currency.format(schoolSavedProgress)}</strong>
             <span>Remaining school amount</span>
             <strong>{currency.format(schoolRunway?.remainingSchoolAmount ?? schoolGoal?.targetAmount ?? 2000)}</strong>
+            <div className="progress-track" aria-label={`School reserve ${schoolProgressPercent}% funded`}>
+              <span style={{ width: `${schoolProgressPercent}%` }} />
+            </div>
+            <span>{schoolProgressPercent}% funded</span>
             <span>Weekly target</span>
             <strong>{currency.format(schoolRunway?.weeklySchoolTarget ?? 0)}</strong>
             <span>Monthly school target</span>
             <strong>{currency.format(schoolRunway?.monthlySchoolTarget ?? 0)}</strong>
+            <span>Deadline</span>
+            <strong>{schoolGoal?.deadline ?? 'not set'}</strong>
+            <span>Weeks left</span>
+            <strong>{schoolRunway?.weeksUntilDeadline ?? 0}</strong>
+            <span>Funding source</span>
+            <strong>
+              {schoolFunding?.fundingProgressSource === 'linked_account'
+                ? `${schoolFunding.fundingAccountName}${schoolFunding.fundingAccountMask ? ` ending ${schoolFunding.fundingAccountMask}` : ''}`
+                : selectedReserveAccount
+                  ? `${selectedReserveAccount.name}${selectedReserveAccount.mask ? ` ending ${selectedReserveAccount.mask}` : ''}`
+                : 'Manual'}
+            </strong>
+            <span>{schoolFunding?.fundingMessage ?? 'Manual saved progress is used until a funding account is linked.'}</span>
+          </div>
+
+          <div className="runway-card">
             <span>Estimated job income</span>
             <strong>{currency.format(incomeSummary?.estimatedMonthlyIncome ?? 0)}</strong>
             <span>Current subs/bills monthly</span>
@@ -1320,7 +1476,8 @@ function App() {
         <section className="panel recommendations-panel">
           <div className="panel-heading">
             <div>
-              <h2>Recommendations</h2>
+              <span className="section-kicker">03 / This week's lever queue</span>
+              <h2>Tactical Actions</h2>
               <p>School first, debt current, avoid fees, then move/rental fund later.</p>
             </div>
             <div className="panel-actions">
@@ -1383,6 +1540,71 @@ function App() {
           )}
         </section>
       ) : null}
+
+      <section className="triage-grid">
+        <section className="panel forecast-panel">
+          <span className="section-kicker">04 / Forecast</span>
+          <h2>What happens if nothing changes?</h2>
+          <div className="forecast-list">
+            {[
+              {
+                label: 'Current path',
+                value: currentForecastSaved,
+                note: `Assumes flexible spend stays at ${currency.format(safeToSpend?.allowedMonthlyFlexibleSpend ?? 0)} per month.`,
+              },
+              {
+                label: 'After accepted/done cuts',
+                value: acceptedCutsForecastSaved,
+                note: `Adds ${currency.format(acceptedRecommendationImpact)} per month from reviewed recommendation impact.`,
+              },
+              {
+                label: 'With extra income scenario',
+                value: extraIncomeForecastSaved,
+                note: 'Illustrates an extra $150/week scenario. This is not assumed income.',
+              },
+            ].map((scenario) => {
+              const target = schoolGoal?.targetAmount ?? 0
+              const gap = Math.max(0, target - scenario.value)
+              const percent = target > 0 ? Math.min(100, Math.round((scenario.value / target) * 100)) : 0
+              return (
+                <article className="forecast-row" key={scenario.label}>
+                  <div>
+                    <strong>{scenario.label}</strong>
+                    <span>{scenario.note}</span>
+                  </div>
+                  <div className="forecast-bar">
+                    <span style={{ width: `${percent}%` }} />
+                  </div>
+                  <strong>{gap > 0 ? `Short by ${currency.format(gap)}` : 'School target covered'}</strong>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="panel goal-stack">
+          <span className="section-kicker">05 / Goal stack</span>
+          <h2>Priority order</h2>
+          {[
+            ['School return reserve', 'active', currency.format(schoolGoal?.targetAmount ?? 0)],
+            ['Debt current', 'stable', 'Keep minimums safe'],
+            ['Credit card interest attack', 'paused', 'After school is unlocked'],
+            ['Emergency buffer', 'paused', 'Small buffer after school'],
+            ['Colorado rental/move', coloradoGoal?.isActive ? 'later' : 'paused', 'Later bucket'],
+            ['SpiritOS upgrade', spiritOsGoal?.isActive ? 'later' : 'paused', 'Lower priority'],
+            ['Land later', 'future', 'Someday horizon'],
+          ].map(([label, state, detail], index) => (
+            <div className={`goal-row ${state}`} key={label}>
+              <span>{index + 1}</span>
+              <div>
+                <strong>{label}</strong>
+                <small>{detail}</small>
+              </div>
+              <em>{state}</em>
+            </div>
+          ))}
+        </section>
+      </section>
 
       <section className="panel receipts-panel">
         <div className="panel-heading">

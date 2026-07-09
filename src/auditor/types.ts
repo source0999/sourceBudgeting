@@ -52,6 +52,8 @@ export type Goal = {
   priority: number
   autoAllocate: boolean
   isActive: boolean
+  fundingAccountId?: string | null
+  fundingMode?: 'manual' | 'linked_account'
 }
 
 export type Rule = {
@@ -177,6 +179,15 @@ export type PlannerSettings = {
   petCapMonthly: number
   healthThcaCapMonthly: number
   miscCapMonthly: number
+}
+
+export type SchoolFundingMetadata = {
+  fundingAccountId: string | null
+  fundingAccountName: string | null
+  fundingAccountMask: string | null
+  fundingAccountBalance: number | null
+  fundingProgressSource: 'manual' | 'linked_account' | 'fallback'
+  fundingMessage: string
 }
 
 export type SchoolRunway = {

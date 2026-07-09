@@ -169,6 +169,36 @@ Fixed payment defaults:
 
 These are editable in the planner and stored only in local dev state under `data/`.
 
+## Money Triage Board
+
+The frontend uses a dark **Money Triage Board** layout focused on one question: can you spend money today and still get back into school?
+
+The top of the app is ordered as:
+
+- Command strip with Plaid/local status, checking balance, credit card balance, last bank check, connect, refresh, and reset controls.
+- Primary safe-to-spend decision card using live `/api/recommendations` math.
+- School Return Reserve card using the real school goal and runway.
+- Tactical action queue from live recommendation cards.
+- Forecast card with clear assumptions.
+- Goal stack with lower goals intentionally paused/later.
+- Ground evidence: spending, recurring charges, receipts, accounts, and recent transactions.
+
+No demo-only values from the design prototype are used.
+
+## School Reserve Funding Account
+
+The School Return Reserve can optionally link to a connected depository checking/savings account.
+
+- The dropdown lists checking/savings depository accounts only.
+- Credit cards are not eligible funding accounts.
+- Savings accounts sort before checking accounts when available.
+- If no savings/checking account is available, manual saved progress remains active.
+- If a linked account has an available/current balance, that balance is used as live saved progress for recommendation math.
+- If the linked account balance is unavailable, the app falls back to manual saved progress.
+- Linking an account does not move money, create transfers, or create a savings account.
+
+The selected account id is stored only in local dev planner state under `data/sourcebudgeting-state.json`, which is gitignored.
+
 These recommendations are rules/math only. They do not move money, cancel subscriptions, mutate Plaid, or provide certified financial advice.
 
 Local planner endpoints:

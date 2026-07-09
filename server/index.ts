@@ -6,6 +6,7 @@ import path from 'node:path'
 import multer from 'multer'
 import { buildRecommendations } from '../src/auditor/recommendationEngine.js'
 import { buildReceiptMatchCandidates } from '../src/auditor/receiptMatching.js'
+import { resolveSchoolFunding } from '../src/auditor/schoolFunding.js'
 import type { AccountSnapshot, DecisionLogEntry, Goal, Receipt } from '../src/auditor/types.js'
 import { createId, readDevStore, receiptOriginalsDir, safeFilename, updateDevStore } from './devStore.js'
 import {
@@ -866,12 +867,14 @@ app.get('/api/planner/state', (_req, res) => {
   res.json({
     goals: store.goals,
     settings: store.settings,
+    goalFundingAccounts: store.goalFundingAccounts,
     decisionLog: store.decisionLog,
   })
 })
 
 app.post('/api/planner/goals', (req, res) => {
   const incomingGoals = req.body?.goals
+  const incomingGoalFundingAccounts = req.body?.goalFundingAccounts
   const debtMinimumBuffer = Number(req.body?.settings?.debtMinimumBuffer ?? 0)
   const carPaymentMonthly = Number(req.body?.settings?.carPaymentMonthly ?? 0)
   const phonePaymentMonthly = Number(req.body?.settings?.phonePaymentMonthly ?? 0)
@@ -889,6 +892,14 @@ app.post('/api/planner/goals', (req, res) => {
   const state = updateDevStore((current) => ({
     ...current,
     goals: incomingGoals as Goal[],
+    goalFundingAccounts:
+      incomingGoalFundingAccounts && typeof incomingGoalFundingAccounts === 'object'
+        ? (incomingGoalFundingAccounts as Record<string, string | null>)
+        : Object.fromEntries(
+            (incomingGoals as Goal[])
+              .filter((goal) => goal.fundingMode === 'linked_account' && goal.fundingAccountId)
+              .map((goal) => [goal.id, goal.fundingAccountId ?? null]),
+          ),
     settings: {
       ...current.settings,
       debtMinimumBuffer: Number.isFinite(debtMinimumBuffer) ? Math.max(0, debtMinimumBuffer) : 0,
@@ -913,7 +924,7 @@ app.post('/api/planner/goals', (req, res) => {
     ],
   }))
 
-  res.json({ goals: state.goals, settings: state.settings })
+  res.json({ goals: state.goals, settings: state.settings, goalFundingAccounts: state.goalFundingAccounts })
 })
 
 app.get('/api/recommendations', async (req, res) => {
@@ -927,9 +938,14 @@ app.get('/api/recommendations', async (req, res) => {
     const store = readDevStore()
     const [accounts, transactions] = await Promise.all([fetchAccounts(), fetchTransactions(180)])
     const recurring = detectRecurringPayments(transactions, accounts)
-    const result = buildRecommendations({
+    const accountSnapshots = accounts.map(toAccountSnapshot)
+    const funding = resolveSchoolFunding({
       goals: store.goals,
-      accounts: accounts.map(toAccountSnapshot),
+      accounts: accountSnapshots,
+    })
+    const result = buildRecommendations({
+      goals: funding.goals,
+      accounts: accountSnapshots,
       transactions,
       recurringCharges: recurring,
       debtReserve: store.settings.debtMinimumBuffer,
@@ -941,6 +957,7 @@ app.get('/api/recommendations', async (req, res) => {
       schoolRunway: result.schoolRunway,
       safeToSpend: result.safeToSpend,
       incomeSummary: result.incomeSummary,
+      schoolFunding: funding.metadata,
       recommendations: showHidden ? result.recommendations.map((recommendation) => {
         const saved = store.recommendationStatus[recommendation.id]
         return saved ? { ...recommendation, status: saved.status } : recommendation

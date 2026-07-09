@@ -8,6 +8,7 @@ export type DevStoreState = {
   decisionLog: DecisionLogEntry[]
   recommendationStatus: Record<string, { status: string; snoozedUntil?: string | null }>
   settings: PlannerSettings
+  goalFundingAccounts: Record<string, string | null>
 }
 
 const dataDir = path.join(process.cwd(), 'data')
@@ -28,6 +29,8 @@ const defaultState = (): DevStoreState => ({
       priority: 1,
       autoAllocate: true,
       isActive: true,
+      fundingAccountId: null,
+      fundingMode: 'manual',
     },
     {
       id: 'debt-current',
@@ -77,6 +80,7 @@ const defaultState = (): DevStoreState => ({
   receipts: [],
   decisionLog: [],
   recommendationStatus: {},
+  goalFundingAccounts: {},
   settings: {
     debtMinimumBuffer: 0,
     carPaymentMonthly: 460,
@@ -110,20 +114,42 @@ export const readDevStore = (): DevStoreState => {
         ...fallback.settings,
         ...parsed.settings,
       },
+      goalFundingAccounts: {
+        ...fallback.goalFundingAccounts,
+        ...parsed.goalFundingAccounts,
+      },
     } as DevStoreState
     const migratedGoals = stored.goals.map((goal) => {
       if (goal.id === 'school' && goal.targetAmount === 2000 && ['2026-08-31', '2026-12-15'].includes(goal.deadline)) {
-        return { ...goal, targetAmount: schoolTargetAmount, deadline: schoolDeadline }
+        return {
+          ...goal,
+          targetAmount: schoolTargetAmount,
+          deadline: schoolDeadline,
+          fundingAccountId: goal.fundingAccountId ?? stored.goalFundingAccounts[goal.id] ?? null,
+          fundingMode: goal.fundingMode ?? (stored.goalFundingAccounts[goal.id] ? 'linked_account' : 'manual'),
+        }
       }
 
       if (goal.id === 'debt-current' && ['2026-08-31', '2026-12-15'].includes(goal.deadline)) {
         return { ...goal, deadline: schoolDeadline }
       }
 
-      return goal
+      return {
+        ...goal,
+        fundingAccountId: goal.fundingAccountId ?? stored.goalFundingAccounts[goal.id] ?? null,
+        fundingMode: goal.fundingMode ?? (stored.goalFundingAccounts[goal.id] ? 'linked_account' : 'manual'),
+      }
     })
+    const migratedFundingAccounts = {
+      ...stored.goalFundingAccounts,
+      ...Object.fromEntries(
+        migratedGoals
+          .filter((goal) => goal.fundingMode === 'linked_account' && goal.fundingAccountId)
+          .map((goal) => [goal.id, goal.fundingAccountId ?? null]),
+      ),
+    }
 
-    return { ...stored, goals: migratedGoals }
+    return { ...stored, goals: migratedGoals, goalFundingAccounts: migratedFundingAccounts }
   } catch {
     return defaultState()
   }

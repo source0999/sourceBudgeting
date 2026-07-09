@@ -5,7 +5,8 @@ import { calculateSchoolRunway } from './goalMath.js'
 import { detectJobIncome } from './incomeSignals.js'
 import { buildRecommendations } from './recommendationEngine.js'
 import { buildReceiptMatchCandidates } from './receiptMatching.js'
-import type { BasicTransactionForAudit, Goal, Receipt } from './types.js'
+import { getEligibleSchoolFundingAccounts, resolveSchoolFunding } from './schoolFunding.js'
+import type { AccountSnapshot, BasicTransactionForAudit, Goal, Receipt } from './types.js'
 
 const schoolGoal: Goal = {
   id: 'school',
@@ -197,5 +198,88 @@ describe('signals and recommendations', () => {
     expect(result.incomeSummary.paycheckCount).toBe(2)
     expect(result.schoolRunway.monthlySchoolTarget).toBeLessThan(500)
     expect(result.recommendations.some((recommendation) => recommendation.type === 'income_runway')).toBe(true)
+  })
+})
+
+describe('school funding account linking', () => {
+  const account = (overrides: Partial<AccountSnapshot>): AccountSnapshot => ({
+    accountId: 'acct',
+    name: 'Account',
+    type: 'depository',
+    subtype: 'checking',
+    mask: '0000',
+    availableBalance: 0,
+    currentBalance: 0,
+    ...overrides,
+  })
+
+  it('uses an eligible linked depository account balance as school progress', () => {
+    const linkedGoal: Goal = {
+      ...schoolGoal,
+      fundingMode: 'linked_account',
+      fundingAccountId: 'savings',
+    }
+    const result = resolveSchoolFunding({
+      goals: [linkedGoal],
+      accounts: [account({ accountId: 'savings', subtype: 'savings', availableBalance: 725 })],
+    })
+
+    expect(result.metadata.fundingProgressSource).toBe('linked_account')
+    expect(result.goals[0].currentProgress).toBe(725)
+  })
+
+  it('does not allow credit accounts as school reserve funding accounts', () => {
+    const linkedGoal: Goal = {
+      ...schoolGoal,
+      fundingMode: 'linked_account',
+      fundingAccountId: 'credit',
+    }
+    const result = resolveSchoolFunding({
+      goals: [linkedGoal],
+      accounts: [account({ accountId: 'credit', type: 'credit', subtype: 'credit card', currentBalance: 100 })],
+    })
+
+    expect(result.metadata.fundingProgressSource).toBe('fallback')
+    expect(result.goals[0].currentProgress).toBe(schoolGoal.currentProgress)
+  })
+
+  it('falls back to manual progress when linked account balance is missing', () => {
+    const linkedGoal: Goal = {
+      ...schoolGoal,
+      fundingMode: 'linked_account',
+      fundingAccountId: 'checking',
+    }
+    const result = resolveSchoolFunding({
+      goals: [linkedGoal],
+      accounts: [account({ accountId: 'checking', availableBalance: null, currentBalance: null })],
+    })
+
+    expect(result.metadata.fundingProgressSource).toBe('fallback')
+    expect(result.goals[0].currentProgress).toBe(schoolGoal.currentProgress)
+  })
+
+  it('keeps old manual planner goals usable when funding fields are missing', () => {
+    const oldGoal = {
+      ...schoolGoal,
+      fundingMode: undefined,
+      fundingAccountId: undefined,
+    }
+    const result = resolveSchoolFunding({
+      goals: [oldGoal],
+      accounts: [],
+    })
+
+    expect(result.metadata.fundingProgressSource).toBe('manual')
+    expect(result.goals[0].currentProgress).toBe(schoolGoal.currentProgress)
+  })
+
+  it('prefers savings accounts in the eligible funding list', () => {
+    const eligible = getEligibleSchoolFundingAccounts([
+      account({ accountId: 'credit', type: 'credit', subtype: 'credit card' }),
+      account({ accountId: 'checking', name: 'Checking', subtype: 'checking' }),
+      account({ accountId: 'savings', name: 'Savings', subtype: 'savings' }),
+    ])
+
+    expect(eligible.map((item) => item.accountId)).toEqual(['savings', 'checking'])
   })
 })
