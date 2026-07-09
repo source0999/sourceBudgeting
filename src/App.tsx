@@ -1033,7 +1033,7 @@ function App() {
     ? Math.min(100, Math.round((schoolSavedProgress / schoolGoal.targetAmount) * 100))
     : 0
   const decisionStatus =
-    (safeToSpend?.safeToSpend ?? 0) > 50 ? 'safe' : (safeToSpend?.safeToSpend ?? 0) > 0 ? 'tight' : 'urgent'
+    (safeToSpend?.safeToSpend ?? 0) > 50 ? 'safe' : (safeToSpend?.safeToSpend ?? 0) >= 0 ? 'tight' : 'urgent'
   const acceptedRecommendationImpact = recommendations
     .filter((recommendation) => recommendation.status === 'accepted' || recommendation.status === 'done')
     .reduce((total, recommendation) => total + recommendation.impactMonthly, 0)
@@ -1223,9 +1223,11 @@ function App() {
           <strong className="decision-amount">{currency.format(safeToSpend?.safeToSpend ?? 0)}</strong>
           <p>
             {status.connected
-              ? (safeToSpend?.safeToSpend ?? 0) >= 0
+              ? (safeToSpend?.safeToSpend ?? 0) > 0
                 ? `You can spend ${currency.format(safeToSpend?.safeToSpend ?? 0)} today and stay on the school path.`
-                : `Do not spend freely today. School reserve is short by ${currency.format(Math.abs(safeToSpend?.safeToSpend ?? 0))}.`
+                : (safeToSpend?.safeToSpend ?? 0) === 0
+                  ? 'Do not spend freely today. Secure your school reserve first.'
+                  : `Do not spend freely today. School reserve is short by ${currency.format(Math.abs(safeToSpend?.safeToSpend ?? 0))}.`
               : 'Connect bank to load live money data.'}
           </p>
           <span className={`decision-pill ${decisionStatus}`}>{decisionStatus}</span>
