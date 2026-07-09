@@ -94,15 +94,20 @@ app.get('/', (_req, res) => {
 })
 
 // Dev-only token state. Replace with encrypted persistent storage before adding users.
-let accessToken: string | null = null
-let itemId: string | null = null
-let institutionName: string | null = null
-
-type DevSession = {
-  plaidEnv: string
+type ConnectedItem = {
   accessToken: string
   itemId: string | null
   institutionName: string | null
+}
+
+let connectedItems: ConnectedItem[] = []
+
+type DevSession = {
+  plaidEnv: string
+  items?: ConnectedItem[]
+  accessToken?: string
+  itemId?: string | null
+  institutionName?: string | null
 }
 
 type ApiError = {
@@ -126,6 +131,8 @@ type PlaidFailure = {
 
 type BasicAccount = {
   account_id: string
+  item_id: string | null
+  institution_name: string | null
   name: string
   official_name: string | null
   type: string
@@ -152,6 +159,19 @@ type BasicTransaction = {
   } | null
   pending: boolean
 }
+
+const hasPlaidConnection = () => connectedItems.length > 0
+
+const primaryConnectedItem = () => connectedItems[connectedItems.length - 1] ?? null
+
+const institutionNames = () =>
+  [...new Set(connectedItems.map((item) => item.institutionName).filter((name): name is string => Boolean(name)))]
+
+const publicConnectedItems = () =>
+  connectedItems.map((item) => ({
+    itemId: item.itemId,
+    institutionName: item.institutionName,
+  }))
 
 type RecurringType = 'subscription' | 'bill' | 'transfer/payment' | 'shopping/retail' | 'food' | 'unknown'
 type Cadence = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'irregular'
@@ -190,31 +210,38 @@ const restoreDevSession = () => {
 
     const session = JSON.parse(fs.readFileSync(devSessionPath, 'utf8')) as Partial<DevSession>
 
-    if (session.plaidEnv !== plaidEnv || typeof session.accessToken !== 'string') {
+    if (session.plaidEnv !== plaidEnv) {
       return
     }
 
-    accessToken = session.accessToken
-    itemId = session.itemId ?? null
-    institutionName = session.institutionName ?? null
+    if (Array.isArray(session.items)) {
+      connectedItems = session.items.filter((item): item is ConnectedItem => typeof item.accessToken === 'string')
+      return
+    }
+
+    if (typeof session.accessToken === 'string') {
+      connectedItems = [
+        {
+          accessToken: session.accessToken,
+          itemId: session.itemId ?? null,
+          institutionName: session.institutionName ?? null,
+        },
+      ]
+    }
   } catch {
-    accessToken = null
-    itemId = null
-    institutionName = null
+    connectedItems = []
   }
 }
 
 const saveDevSession = () => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     return
   }
 
   fs.mkdirSync(path.dirname(devSessionPath), { recursive: true })
   const session: DevSession = {
     plaidEnv,
-    accessToken,
-    itemId,
-    institutionName,
+    items: connectedItems,
   }
   fs.writeFileSync(devSessionPath, JSON.stringify(session), { mode: 0o600 })
 }
@@ -252,8 +279,10 @@ const roundCurrency = (amount: number) => Math.round(amount * 100) / 100
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10)
 
-const sanitizeAccount = (account: AccountBase): BasicAccount => ({
+const sanitizeAccount = (account: AccountBase, item: ConnectedItem): BasicAccount => ({
   account_id: account.account_id,
+  item_id: item.itemId,
+  institution_name: item.institutionName,
   name: account.name,
   official_name: account.official_name ?? null,
   type: account.type,
@@ -284,19 +313,25 @@ const sanitizeTransaction = (transaction: Transaction): BasicTransaction => ({
 })
 
 const fetchAccounts = async () => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     throw new Error('No Plaid connection is active.')
   }
 
-  const response = await plaidClient.accountsGet({
-    access_token: accessToken,
-  })
+  const accountGroups = await Promise.all(
+    connectedItems.map(async (item) => {
+      const response = await plaidClient.accountsGet({
+        access_token: item.accessToken,
+      })
 
-  return response.data.accounts.map(sanitizeAccount)
+      return response.data.accounts.map((account) => sanitizeAccount(account, item))
+    }),
+  )
+
+  return accountGroups.flat()
 }
 
 const fetchTransactions = async (days: number) => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     throw new Error('No Plaid connection is active.')
   }
 
@@ -305,31 +340,45 @@ const fetchTransactions = async (days: number) => {
   const startDate = new Date()
   startDate.setDate(endDate.getDate() - boundedDays)
 
-  const transactions: BasicTransaction[] = []
-  const count = 500
-  let offset = 0
-  let hasMore = true
+  const transactionGroups = await Promise.allSettled(
+    connectedItems.map(async (item) => {
+      const transactions: BasicTransaction[] = []
+      const count = 500
+      let offset = 0
+      let hasMore = true
 
-  while (hasMore) {
-    const response = await plaidClient.transactionsGet({
-      access_token: accessToken,
-      start_date: formatDate(startDate),
-      end_date: formatDate(endDate),
-      options: {
-        count,
-        offset,
-      },
-    })
+      while (hasMore) {
+        const response = await plaidClient.transactionsGet({
+          access_token: item.accessToken,
+          start_date: formatDate(startDate),
+          end_date: formatDate(endDate),
+          options: {
+            count,
+            offset,
+          },
+        })
 
-    transactions.push(...response.data.transactions.map(sanitizeTransaction))
-    offset += response.data.transactions.length
-    hasMore =
-      response.data.transactions.length > 0 &&
-      offset < response.data.total_transactions &&
-      offset < 2000
+        transactions.push(...response.data.transactions.map(sanitizeTransaction))
+        offset += response.data.transactions.length
+        hasMore =
+          response.data.transactions.length > 0 &&
+          offset < response.data.total_transactions &&
+          offset < 2000
+      }
+
+      return transactions
+    }),
+  )
+
+  const fulfilled = transactionGroups
+    .filter((result): result is PromiseFulfilledResult<BasicTransaction[]> => result.status === 'fulfilled')
+    .flatMap((result) => result.value)
+
+  if (fulfilled.length === 0 && transactionGroups.some((result) => result.status === 'rejected')) {
+    throw transactionGroups.find((result) => result.status === 'rejected')?.reason
   }
 
-  return transactions
+  return fulfilled.sort((left, right) => right.date.localeCompare(left.date))
 }
 
 const normalizeMerchantName = (transaction: BasicTransaction) => {
@@ -661,10 +710,9 @@ const detectRecurringPayments = (transactions: BasicTransaction[], accounts: Bas
   )
 }
 
-const loadInstitutionName = async (institutionId: string | null | undefined) => {
+const getInstitutionName = async (institutionId: string | null | undefined) => {
   if (!institutionId) {
-    institutionName = null
-    return
+    return null
   }
 
   try {
@@ -673,19 +721,23 @@ const loadInstitutionName = async (institutionId: string | null | undefined) => 
       country_codes: plaidCountryCodes as InstitutionsGetByIdRequest['country_codes'],
     })
 
-    institutionName = response.data.institution.name
+    return response.data.institution.name
   } catch {
-    institutionName = null
+    return null
   }
 }
 
 restoreDevSession()
 
 app.get('/api/status', (_req, res) => {
+  const primary = primaryConnectedItem()
+  const names = institutionNames()
+
   res.json({
-    connected: Boolean(accessToken),
-    itemId,
-    institutionName,
+    connected: hasPlaidConnection(),
+    itemId: primary?.itemId ?? null,
+    institutionName: (names.join(', ') || primary?.institutionName) ?? null,
+    items: publicConnectedItems(),
     plaidEnv,
   })
 })
@@ -733,16 +785,30 @@ const exchangePublicTokenHandler: express.RequestHandler = async (req, res) => {
       public_token: publicToken,
     })
 
-    accessToken = response.data.access_token
-    itemId = response.data.item_id
-
     const itemResponse = await plaidClient.itemGet({
-      access_token: accessToken,
+      access_token: response.data.access_token,
     })
-    await loadInstitutionName(itemResponse.data.item.institution_id)
+    const nextItem: ConnectedItem = {
+      accessToken: response.data.access_token,
+      itemId: response.data.item_id,
+      institutionName: await getInstitutionName(itemResponse.data.item.institution_id),
+    }
+    const existingIndex = connectedItems.findIndex((item) => item.itemId === nextItem.itemId)
+
+    if (existingIndex >= 0) {
+      connectedItems[existingIndex] = nextItem
+    } else {
+      connectedItems.push(nextItem)
+    }
+
     saveDevSession()
 
-    res.json({ connected: true, itemId, institutionName })
+    res.json({
+      connected: true,
+      itemId: nextItem.itemId,
+      institutionName: nextItem.institutionName,
+      items: publicConnectedItems(),
+    })
   } catch (error) {
     sendPlaidError(res, 'Unable to exchange Plaid public token.', error as PlaidFailure)
   }
@@ -752,16 +818,18 @@ app.post('/api/exchange-public-token', exchangePublicTokenHandler)
 app.post('/api/exchange_public_token', exchangePublicTokenHandler)
 
 app.get('/api/accounts', async (_req, res) => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     res.status(401).json({ error: 'No Plaid connection is active.' })
     return
   }
 
   try {
     const accounts = await fetchAccounts()
+    const names = institutionNames()
 
     res.json({
-      institution: institutionName ? { name: institutionName } : null,
+      institution: names[0] ? { name: names.join(', ') } : null,
+      institutions: publicConnectedItems().map((item) => ({ name: item.institutionName, itemId: item.itemId })),
       accounts,
     })
   } catch (error) {
@@ -770,7 +838,7 @@ app.get('/api/accounts', async (_req, res) => {
 })
 
 app.get('/api/transactions', async (req, res) => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     res.status(401).json({ error: 'No Plaid connection is active.' })
     return
   }
@@ -788,15 +856,23 @@ app.get('/api/transactions', async (req, res) => {
 })
 
 app.post('/api/transactions/refresh', async (_req, res) => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     res.status(401).json({ error: 'No Plaid connection is active.' })
     return
   }
 
   try {
-    await plaidClient.transactionsRefresh({
-      access_token: accessToken,
-    })
+    const refreshes = await Promise.allSettled(
+      connectedItems.map((item) =>
+        plaidClient.transactionsRefresh({
+          access_token: item.accessToken,
+        }),
+      ),
+    )
+
+    if (refreshes.every((result) => result.status === 'rejected')) {
+      throw refreshes[0].reason
+    }
 
     res.json({
       requested: true,
@@ -809,7 +885,7 @@ app.post('/api/transactions/refresh', async (_req, res) => {
 })
 
 app.get('/api/recurring', async (_req, res) => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     res.status(401).json({ error: 'No Plaid connection is active.' })
     return
   }
@@ -836,6 +912,8 @@ app.get('/api/recurring', async (_req, res) => {
 
 const toAccountSnapshot = (account: BasicAccount): AccountSnapshot => ({
   accountId: account.account_id,
+  itemId: account.item_id,
+  institutionName: account.institution_name,
   name: account.name,
   type: account.type,
   subtype: account.subtype,
@@ -928,7 +1006,7 @@ app.post('/api/planner/goals', (req, res) => {
 })
 
 app.get('/api/recommendations', async (req, res) => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     res.status(401).json({ error: 'No Plaid connection is active.' })
     return
   }
@@ -1104,7 +1182,7 @@ app.post('/api/receipts/:id/reject-match', (req, res) => {
 })
 
 app.get('/api/receipts/:id/match-candidates', async (req, res) => {
-  if (!accessToken) {
+  if (!hasPlaidConnection()) {
     res.status(401).json({ error: 'No Plaid connection is active.' })
     return
   }
@@ -1125,9 +1203,7 @@ app.get('/api/receipts/:id/match-candidates', async (req, res) => {
 })
 
 app.post('/api/reset', (_req, res) => {
-  accessToken = null
-  itemId = null
-  institutionName = null
+  connectedItems = []
   clearDevSession()
 
   res.json({ connected: false })

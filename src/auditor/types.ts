@@ -17,6 +17,8 @@ export type RecommendationType =
 
 export type AccountSnapshot = {
   accountId: string
+  itemId?: string | null
+  institutionName?: string | null
   name: string
   type: string
   subtype: string | null
@@ -184,6 +186,7 @@ export type PlannerSettings = {
 export type SchoolFundingMetadata = {
   fundingAccountId: string | null
   fundingAccountName: string | null
+  fundingAccountInstitutionName: string | null
   fundingAccountMask: string | null
   fundingAccountBalance: number | null
   fundingProgressSource: 'manual' | 'linked_account' | 'fallback'

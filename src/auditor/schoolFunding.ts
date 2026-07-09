@@ -3,12 +3,17 @@ import type { AccountSnapshot, Goal, SchoolFundingMetadata } from './types.js'
 const isEligibleReserveAccount = (account: AccountSnapshot) =>
   account.type === 'depository' && (account.subtype === 'checking' || account.subtype === 'savings')
 
+export const isLikelyAllyAccount = (account: Pick<AccountSnapshot, 'name' | 'institutionName'>) =>
+  `${account.institutionName ?? ''} ${account.name}`.toLowerCase().includes('ally')
+
 export function getEligibleSchoolFundingAccounts(accounts: AccountSnapshot[]) {
   return accounts
     .filter(isEligibleReserveAccount)
     .sort((left, right) => {
       if (left.subtype === 'savings' && right.subtype !== 'savings') return -1
       if (right.subtype === 'savings' && left.subtype !== 'savings') return 1
+      if (isLikelyAllyAccount(left) && !isLikelyAllyAccount(right)) return -1
+      if (isLikelyAllyAccount(right) && !isLikelyAllyAccount(left)) return 1
       return left.name.localeCompare(right.name)
     })
 }
@@ -34,6 +39,7 @@ export function resolveSchoolFunding(input: {
       metadata: {
         fundingAccountId: null,
         fundingAccountName: null,
+        fundingAccountInstitutionName: null,
         fundingAccountMask: null,
         fundingAccountBalance: null,
         fundingProgressSource: 'manual',
@@ -50,6 +56,7 @@ export function resolveSchoolFunding(input: {
       metadata: {
         fundingAccountId: eligibleAccount.accountId,
         fundingAccountName: eligibleAccount.name,
+        fundingAccountInstitutionName: eligibleAccount.institutionName ?? null,
         fundingAccountMask: eligibleAccount.mask,
         fundingAccountBalance: linkedBalance,
         fundingProgressSource: 'linked_account',
@@ -64,6 +71,7 @@ export function resolveSchoolFunding(input: {
       metadata: {
         fundingAccountId: null,
         fundingAccountName: null,
+        fundingAccountInstitutionName: null,
         fundingAccountMask: null,
         fundingAccountBalance: null,
         fundingProgressSource: 'fallback',
@@ -78,6 +86,7 @@ export function resolveSchoolFunding(input: {
       metadata: {
         fundingAccountId: eligibleAccount.accountId,
         fundingAccountName: eligibleAccount.name,
+        fundingAccountInstitutionName: eligibleAccount.institutionName ?? null,
         fundingAccountMask: eligibleAccount.mask,
         fundingAccountBalance: null,
         fundingProgressSource: 'fallback',
@@ -91,6 +100,7 @@ export function resolveSchoolFunding(input: {
     metadata: {
       fundingAccountId: selectedAccountId,
       fundingAccountName: null,
+      fundingAccountInstitutionName: null,
       fundingAccountMask: null,
       fundingAccountBalance: null,
       fundingProgressSource: 'manual',

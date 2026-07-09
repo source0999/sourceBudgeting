@@ -226,6 +226,56 @@ describe('school funding account linking', () => {
 
     expect(result.metadata.fundingProgressSource).toBe('linked_account')
     expect(result.goals[0].currentProgress).toBe(725)
+    expect(linkedGoal.currentProgress).toBe(schoolGoal.currentProgress)
+  })
+
+  it('allows Ally savings as a preferred school reserve account', () => {
+    const linkedGoal: Goal = {
+      ...schoolGoal,
+      fundingMode: 'linked_account',
+      fundingAccountId: 'ally-savings',
+    }
+    const result = resolveSchoolFunding({
+      goals: [linkedGoal],
+      accounts: [
+        account({
+          accountId: 'ally-savings',
+          name: 'Online Savings Account',
+          institutionName: 'Ally Bank',
+          subtype: 'savings',
+          availableBalance: 910,
+        }),
+      ],
+    })
+
+    expect(result.metadata.fundingProgressSource).toBe('linked_account')
+    expect(result.metadata.fundingAccountInstitutionName).toBe('Ally Bank')
+    expect(result.goals[0].currentProgress).toBe(910)
+    expect(linkedGoal.currentProgress).toBe(schoolGoal.currentProgress)
+  })
+
+  it('allows Wells Fargo checking as a temporary reserve tracker', () => {
+    const linkedGoal: Goal = {
+      ...schoolGoal,
+      fundingMode: 'linked_account',
+      fundingAccountId: 'wf-checking',
+    }
+    const result = resolveSchoolFunding({
+      goals: [linkedGoal],
+      accounts: [
+        account({
+          accountId: 'wf-checking',
+          name: 'Everyday Checking',
+          institutionName: 'Wells Fargo',
+          subtype: 'checking',
+          availableBalance: 315,
+        }),
+      ],
+    })
+
+    expect(result.metadata.fundingProgressSource).toBe('linked_account')
+    expect(result.metadata.fundingAccountInstitutionName).toBe('Wells Fargo')
+    expect(result.goals[0].currentProgress).toBe(315)
   })
 
   it('does not allow credit accounts as school reserve funding accounts', () => {
@@ -281,5 +331,15 @@ describe('school funding account linking', () => {
     ])
 
     expect(eligible.map((item) => item.accountId)).toEqual(['savings', 'checking'])
+  })
+
+  it('recommends Ally savings before other depository accounts when present', () => {
+    const eligible = getEligibleSchoolFundingAccounts([
+      account({ accountId: 'wf-checking', name: 'Everyday Checking', institutionName: 'Wells Fargo', subtype: 'checking' }),
+      account({ accountId: 'bank-savings', name: 'Reserve Savings', institutionName: 'Other Bank', subtype: 'savings' }),
+      account({ accountId: 'ally-savings', name: 'Online Savings', institutionName: 'Ally Bank', subtype: 'savings' }),
+    ])
+
+    expect(eligible.map((item) => item.accountId)).toEqual(['ally-savings', 'bank-savings', 'wf-checking'])
   })
 })
